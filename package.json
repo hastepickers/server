@@ -1,0 +1,49 @@
+{
+  "name": "haste_pickers_server",
+  "version": "1.0.0",
+  "description": "haste pickers a dispatch rider delivery service",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Haste-Pickers-App/Server.git"
+  },
+  "keywords": [
+    "dispatch",
+    "rider",
+    "app"
+  ],
+  "author": "ibeneme",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "backblaze-b2": "^1.7.0",
+    "bcrypt": "^5.1.1",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "crypto-address-validators": "^1.0.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "form-data": "^4.0.0",
+    "joi": "^17.12.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.5.0",
+    "mongoose": "^8.3.1",
+    "multer": "^1.4.5-lts.1",
+    "multicoin-address-validator": "^0.5.16",
+    "mutter": "^1.0.1",
+    "nodemailer": "^6.9.13",
+    "nodemon": "^3.1.0",
+    "otp-generator": "^4.0.1",
+    "socket.io": "^4.7.5",
+    "twilio": "^5.0.1",
+    "uuid": "^10.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/Haste-Pickers-App/Server/issues"
+  },
+  "homepage": "https://github.com/Haste-Pickers-App/Server#readme"
+}
