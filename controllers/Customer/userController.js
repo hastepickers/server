@@ -2,21 +2,47 @@ const User = require("../../models/Customer/User");
 const Otp = require("../../models/Customer/Otp");
 const otpGenerator = require("otp-generator");
 const mongoose = require("mongoose");
+const RequestARide = require("../../models/Customer/RequestARideSchema");
 // Get user profile data excluding password
+
+const generateOtp = (length) => {
+  let otp = "";
+  for (let i = 0; i < length; i++) {
+    otp += Math.floor(Math.random() * 10); // Generate a random digit between 0 and 9
+  }
+  return otp;
+};
+
 
 exports.getUserProfile = async (req, res) => {
   const userId = req.user.id; // Get user ID from JWT
   console.log(userId, "userIduserId");
   try {
-    const user = await User.findById(userId).select("-password"); // Exclude password
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // Fetch the user object excluding the password
+    const userAccount = await User.findById(userId).select("-password");
+    if (!userAccount)
+      return res.status(404).json({ message: "User not found" });
+
+    // Fetch completed rides for the user
+    const completedRidesCount = await RequestARide.countDocuments({
+      "customer.customerId": userId,
+      "endRide.isEnded": true,
+    });
+
+    // Add the completedRidesCount to the user object
+    const user = {
+      ...userAccount.toObject(),
+      completedRidesCount,
+    };
+
+    // Return the user profile with the completed rides count
+    console.log(user, "user");
     res.status(200).json(user);
   } catch (error) {
     console.error("Error fetching user profile:", error); // Log error
     res.status(500).json({ message: "Error fetching user profile", error });
   }
 };
-
 // Request OTP to a phone number
 exports.requestOtpForPhoneNumber = async (req, res) => {
   const { phoneNumber } = req.body; // Extract phone number from request body
@@ -34,13 +60,13 @@ exports.requestOtpForPhoneNumber = async (req, res) => {
 
     if (otpRecord) {
       // If OTP record exists, generate a new OTP and update the existing record
-      const otp = otpGenerator.generate(6, { digits: true });
+      const otp = generateOtp(6);
       otpRecord.otp = otp; // Update the OTP value
       await otpRecord.save();
       console.log("OTP updated for phone number:", phoneNumber);
     } else {
       // If no OTP record exists, create a new OTP record
-      const otp = otpGenerator.generate(6, { digits: true });
+      const otp = generateOtp(6);
       otpRecord = new Otp({ userId, phoneNumber, otp });
       await otpRecord.save();
       console.log("OTP created for phone number:", phoneNumber);
@@ -114,8 +140,8 @@ exports.updatePhoneNumberRequest = async (req, res) => {
 
   try {
     // Generate OTPs for both old and new phone numbers
-    const oldOtp = otpGenerator.generate(6, { digits: true });
-    const newOtp = otpGenerator.generate(6, { digits: true });
+    const oldOtp = generateOtp(6);
+    const newOtp = generateOtp(6);
 
     // Check if OTP records already exist for both old and new phone numbers
     let oldOtpRecord = await Otp.findOne({ phoneNumber: oldPhoneNumber });
@@ -291,9 +317,6 @@ exports.getUserByPhoneNumber = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
-
 
 // Update notification preferences (push, newsletter, promotions)
 exports.updateNotificationPreferences = async (req, res) => {

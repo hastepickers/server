@@ -8,6 +8,7 @@ const {
   requestOtpForPhoneNumber,
   verifyUser,
   getUserByPhoneNumber,
+  //healthCheck
 } = require("../../controllers/Customer/userController");
 
 const router = express.Router();
@@ -15,8 +16,8 @@ const router = express.Router();
 // Get user profile data excluding password
 router.get("/profile", getUserProfile);
 router.get("/find-user-by-phone", getUserByPhoneNumber);
-
-// Update user's first name, last name, and country code
+//router.get("/healthCheck", healthCheck);
+//// Update user's first name, last name, and country code
 router.put("/profile-update", updateUserProfile);
 
 // Request OTP for updating phone number

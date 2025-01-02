@@ -18,7 +18,7 @@ const authController = require("../../controllers/Customer/authController");
 
 // Create Account
 router.post("/register", authController.createAccount);
-
+router.get("/healthCheck", authController.healthCheck);
 // Verify Account
 router.post("/verify", authController.verifyAccount);
 

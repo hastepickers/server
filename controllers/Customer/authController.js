@@ -21,6 +21,13 @@ const CustomerEarning = require("../../models/Customer/CustomerEarnings");
  *
  * JWT tokens are generated after a successful OTP verification.
  */
+const generateOtp = (length) => {
+  let otp = "";
+  for (let i = 0; i < length; i++) {
+    otp += Math.floor(Math.random() * 10); // Generate a random digit between 0 and 9
+  }
+  return otp;
+};
 
 // Create User
 exports.createAccount = async (req, res) => {
@@ -54,12 +61,7 @@ exports.createAccount = async (req, res) => {
     await user.save();
 
     // Generate OTP
-    const otp = otpGenerator.generate(6, {
-      digits: true,
-      alphabets: false,
-      upperCase: false,
-      specialChars: false,
-    });
+    const otp = generateOtp(6);
     console.log(otp, "Generated OTP");
 
     // Save OTP in the Otp model
@@ -76,6 +78,21 @@ exports.createAccount = async (req, res) => {
     res.status(500).json({ message: "Error creating account", error });
   }
 };
+
+
+exports.healthCheck = (req, res) => {
+  try {
+    // You can add any additional checks here, like checking the DB or other services
+
+    res.status(200).send({ message: "Server is active and running" });
+  } catch (err) {
+    console.error("Error in health check:", err);
+    res.status(500).send({ message: "Server is down" });
+  }
+};
+
+
+
 
 exports.login = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -95,23 +112,13 @@ exports.login = async (req, res) => {
     let otp;
     if (otpRecord) {
       // If OTP record exists, update it with a new OTP
-      otp = otpGenerator.generate(6, {
-        digits: true,
-        alphabets: false,
-        upperCase: false,
-        specialChars: false,
-      });
-      otpRecord.otp = otp;  // Update the OTP
+      const otp = generateOtp(6);
+      otpRecord.otp = otp; // Update the OTP
       await otpRecord.save();
       console.log(otp, "Updated OTP");
     } else {
       // If no OTP record exists, create a new one
-      otp = otpGenerator.generate(6, {
-        digits: true,
-        alphabets: false,
-        upperCase: false,
-        specialChars: false,
-      });
+      const otp = generateOtp(6);
       otpRecord = new Otp({ phoneNumber, otp });
       await otpRecord.save();
       console.log(otp, "Generated OTP");
@@ -127,102 +134,111 @@ exports.login = async (req, res) => {
   }
 };
 // Verify user account after OTP validation
-exports.verifyNewAccount = async (req, res) => {
-  const { phoneNumber, otp } = req.body; // Extract phone number and OTP from the request body
+const createMessageSupportIfNotExists = async (userId) => {
   try {
-    // Check for the OTP record associated with the provided phone number
+    const existingMessageSupport = await MessageSupport.findOne({ userId });
+    if (!existingMessageSupport) {
+      const messageSupport = new MessageSupport({
+        userId,
+        messages: [], // Initialize with an empty message array
+      });
+      await messageSupport.save();
+      console.log(
+        "MessageSupport document created successfully:",
+        messageSupport
+      );
+    } else {
+      console.log("MessageSupport document already exists for this user.");
+    }
+  } catch (error) {
+    console.error("Error creating MessageSupport document:", error);
+  }
+};
+
+exports.verifyNewAccount = async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+  try {
     const otpRecord = await Otp.findOne({ phoneNumber });
     if (!otpRecord || otpRecord.otp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" }); // Return an error if OTP is invalid
+      return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // Mark the user as verified in the database
     const user = await User.findOneAndUpdate(
       { phoneNumber },
       { verified: true },
-      { new: true } // Return the updated user document
+      { new: true }
     );
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" }); // Check if user exists
+      return res.status(404).json({ message: "User not found" });
     }
 
-    // Create a CustomerEarning record for the verified user
     const customerEarning = new CustomerEarning({
       balance: 0,
-      withdrawalPin: "defaultPin", // Set a default withdrawal PIN
-      userId: user._id, // Use user._id as the userId in CustomerEarning
+      withdrawalPin: "defaultPin",
+      userId: user._id,
     });
-    await customerEarning.save(); // Save the customer earning record
+    await customerEarning.save();
 
-    // Remove the OTP record to prevent reuse
     await Otp.deleteOne({ phoneNumber });
 
-    // Generate JWT tokens for the user
+    // Create a MessageSupport document if it doesn't already exist
+    await createMessageSupportIfNotExists(user._id);
+
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    // Respond with success message and tokens
     res
       .status(200)
       .json({ message: "Account verified", accessToken, refreshToken });
   } catch (error) {
-    console.error("Error verifying account:", error); // Log any errors
-    res.status(500).json({ message: "Error verifying account", error }); // Respond with a server error
+    console.error("Error verifying account:", error);
+    res.status(500).json({ message: "Error verifying account", error });
   }
 };
 
 exports.verifyAccount = async (req, res) => {
-  const { phoneNumber, otp } = req.body; // Extract phone number and OTP from the request body
+  const { phoneNumber, otp } = req.body;
 
   try {
-    // Check if OTP record exists for the phone number and matches the provided OTP
     const otpRecord = await Otp.findOne({ phoneNumber });
     if (!otpRecord || otpRecord.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP", success: false });
     }
 
-    // Find the user by phone number
     const user = await User.findOne({ phoneNumber });
-
-    // Check if user exists
     if (!user) {
       return res
         .status(404)
         .json({ message: "User not found", success: false });
     }
 
-    // Check if the user is already verified
     if (user.verified) {
-      console.log("User is already verified.");
-      // Even if already verified, generate tokens and respond with success
       const { accessToken, refreshToken } = generateTokens(user._id);
       return res.status(200).json({
         message: "Account is already verified",
         success: true,
         accessToken,
         refreshToken,
-        user: user
+        user: user,
       });
     }
 
-    // Mark the user as verified
     user.verified = true;
     await user.save();
 
-    // Delete the OTP record after successful verification
     await Otp.deleteOne({ phoneNumber });
-    console.log(user, "user");
 
-    // Generate JWT tokens for the user
+    // Create a MessageSupport document if it doesn't already exist
+    await createMessageSupportIfNotExists(user._id);
+
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    // Respond with success message, success flag, and tokens
     res.status(200).json({
       message: "Account verified successfully",
       success: true,
       accessToken,
       refreshToken,
-      user: user
+      user: user,
     });
   } catch (error) {
     console.error("Error verifying account:", error);
@@ -231,7 +247,6 @@ exports.verifyAccount = async (req, res) => {
       .json({ message: "Error verifying account", error, success: false });
   }
 };
-
 exports.resendOtp = async (req, res) => {
   const { phoneNumber } = req.body;
   console.log(phoneNumber, "phoneNumber");
@@ -240,17 +255,12 @@ exports.resendOtp = async (req, res) => {
     // const user = await User.findOne({ phoneNumber });
 
     // if (!user) {
-      
+
     //   return res.status(404).json({ message: "User does not exist" });
     // }
 
     // Generate new OTP
-    const otp = otpGenerator.generate(6, {
-      digits: true,
-      alphabets: false,
-      upperCase: false,
-      specialChars: false,
-    });
+    const otp = generateOtp(6);
     await Otp.findOneAndUpdate({ phoneNumber }, { otp }, { upsert: true });
 
     console.log(otp, "otp"); // For debugging purposes
@@ -314,12 +324,7 @@ exports.forgotPassword = async (req, res) => {
     }
 
     // Generate OTP
-    const otp = otpGenerator.generate(6, {
-      digits: true,
-      alphabets: false,
-      upperCase: false,
-      specialChars: false,
-    });
+    const otp = generateOtp(6);
     console.log(otp, "otp");
     const otpRecord = new Otp({ phoneNumber, otp });
     await otpRecord.save();
@@ -333,6 +338,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // Delete User Account
+// Delete User Account and associated records in RequestARide and DriversMessage
 exports.deleteAccount = async (req, res) => {
   const { phoneNumber } = req.body;
 
@@ -346,10 +352,25 @@ exports.deleteAccount = async (req, res) => {
     // Delete associated CustomerEarning record
     await CustomerEarning.deleteOne({ userId: user._id });
 
+    // Delete associated RequestARide records (where customerId or rider userId matches the user's ID)
+    await RequestARide.deleteMany({
+      $or: [{ "customer.customerId": user._id }, { "rider.userId": user._id }],
+    });
+
+    // Delete associated DriverMessages where sender or groupId matches the user's ID
+    await DriversMessage.deleteMany({
+      $or: [
+        { "messages.sender": user._id.toString() },
+        { groupId: user._id.toString() },
+      ],
+    });
+
     // Delete the user account
     await User.deleteOne({ phoneNumber });
 
-    res.status(200).json({ message: "Account deleted successfully" });
+    res
+      .status(200)
+      .json({ message: "Account and associated data deleted successfully" });
   } catch (error) {
     console.error("Error deleting account:", error); // Log the error for debugging
     res.status(500).json({ message: "Error deleting account", error });

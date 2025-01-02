@@ -1,18 +1,17 @@
 const DriversMessage = require("../../models/Customer/DriversMessage");
 const MessageSupport = require("../../models/Customer/MessageSupport");
 
-// Controller method to fetch messages for a user
 const getMessagesForUser = async (req, res) => {
   const userId = req.user.id;
   try {
     // Find the MessageSupport document for the given userId
-    const supportChat = await MessageSupport.findOne({ userId });
+    let supportChat = await MessageSupport.findOne({ userId });
 
-    // If no chat is found, respond with a message indicating no data
+    // If no chat is found, create a new one
     if (!supportChat) {
-      return res
-        .status(404)
-        .json({ message: `No messages found for user ${userId}` });
+      supportChat = new MessageSupport({ userId, messages: [] });
+      await supportChat.save();
+      return
     }
 
     // If chat exists, return the messages
@@ -25,11 +24,13 @@ const getMessagesForUser = async (req, res) => {
   }
 };
 
+
 // Controller method to fetch messages by groupId
 const getMessagesByGroupId = async (req, res) => {
   const { groupId } = req.params; // Extract groupId from URL parameters
 
   try {
+    
     // Find the document with the matching groupId
     const driversMessage = await DriversMessage.findOne({ groupId });
 
@@ -52,5 +53,5 @@ const getMessagesByGroupId = async (req, res) => {
 // Export all methods
 module.exports = {
   getMessagesForUser,
-  getMessagesByGroupId
+  getMessagesByGroupId,
 };

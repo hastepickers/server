@@ -1,10 +1,11 @@
 //Create a new Request a Ride
 
-const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
 const User = require("../../models/Customer/User");
 const Rider = require("../../models/Rider/RiderSchema");
 const mongoose = require("mongoose");
+const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
+
 // Create a new Request a Ride
 exports.createRide = async (req, res) => {
   try {
@@ -13,7 +14,7 @@ exports.createRide = async (req, res) => {
 
     // Fetch the customer details from the User model
     const customer = await User.findById(customerId).select(
-      "firstName lastName phoneNumber imageUrl"
+      "firstName lastName phoneNumber imageUrl email"
     );
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
@@ -49,6 +50,7 @@ exports.createRide = async (req, res) => {
         lastName: customer.lastName,
         phoneNumber: customer.phoneNumber,
         imageUrl: customer.imageUrl,
+        email: customer.email,
       },
       trackingId: generateUUID(), // Function to generate a 12-char unique tracking ID
     });
@@ -63,6 +65,50 @@ exports.createRide = async (req, res) => {
   }
 };
 
+exports.cancelRideById = async (req, res) => {
+  try {
+    const { rideId } = req.params; // Retrieve ride ID from request parameters
+    console.log("Ride canceled successfully:", rideId);
+    // Find the ride by its ID
+    const ride = await RequestARide.findById(rideId);
+
+    if (!ride) {
+      return res
+        .status(404)
+        .json({ message: "Ride not found", success: false });
+    }
+
+    // Check if the ride is already cancelled
+    if (ride.cancelRide.isCancelled) {
+      return res.status(200).json({
+        message: "Ride cancelled successfully",
+        ride: ride,
+        success: true,
+      });
+    }
+
+    // Update the ride's cancel status
+    ride.cancelRide.isCancelled = true;
+    ride.cancelRide.timestamp = new Date();
+
+    // Save the updated ride
+    await ride.save();
+
+    // Respond with success message
+    res.status(200).json({
+      message: "Ride cancelled successfully",
+      ride: ride,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error cancelling the ride:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while processing your request.",
+    });
+  }
+};
+
 exports.bookARide = async (req, res) => {
   try {
     // Get user ID from the request (provided by authentication middleware)
@@ -70,14 +116,14 @@ exports.bookARide = async (req, res) => {
 
     // Find the customer in the database
     const customer = await User.findById(userId).select(
-      "firstName lastName phoneNumber imageUrl"
+      "firstName lastName phoneNumber imageUrl email"
     );
     if (!customer) {
       return res.status(404).json({ message: "Customer not found." });
     }
 
     // Extract ride details from the request body
-    const { deliveryDropoff, pickup, typeOfVehicle } = req.body;
+    const { deliveryDropoff, pickup, typeOfVehicle, totalPrice } = req.body;
 
     // Validate required fields
     if (
@@ -120,9 +166,9 @@ exports.bookARide = async (req, res) => {
         lastName: customer.lastName,
         phoneNumber: customer.phoneNumber,
         imageUrl: customer.imageUrl,
+        email: customer.email,
       },
-      totalPrice: typeOfVehicle?.bikePrice,
-      // discountedPrice,
+      totalPrice: totalPrice,
     });
 
     // Save to the database
@@ -131,6 +177,7 @@ exports.bookARide = async (req, res) => {
     res.status(201).json({
       message: "Ride request booked successfully",
       rideRequest: newRideRequest,
+      success: true,
     });
   } catch (error) {
     console.error("Error booking ride request:", error);
@@ -229,6 +276,7 @@ exports.getRideById = async (req, res) => {
     if (!ride) {
       return res.status(404).json({ message: "Ride not found" });
     }
+    console.log(ride, "riderideride");
     res.status(200).json(ride);
   } catch (error) {
     res.status(500).json({ message: "Erroiir fetching rides details", error });
@@ -278,6 +326,29 @@ exports.updateRideStatus = async (req, res) => {
   }
 };
 
+
+exports.getCompletedRides = async (req, res) => {
+  try {
+   const userId = req.user.id; 
+
+    // Fetch rides with 'isEnded' set to true and customerId matching the user ID
+    const completedRides = await RequestARide.find({
+      "customer.customerId": userId,
+      "endRide.isEnded": true
+    });
+
+    if (!completedRides.length) {
+      return res.status(404).json({ message: 'No completed rides found for this user' });
+    }
+
+    // Return the completed rides
+    return res.status(200).json({ completedRides });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 // Utility function to generate a 12-char UUID for the ride tracking ID
 const generateUUID = () => {
   return "xxxxxxxxxxxx".replace(/[x]/g, () =>
@@ -296,7 +367,7 @@ exports.getRidesByCustomerId = async (req, res) => {
     // Make sure customerId is a valid ObjectId
     const rides = await RequestARide.find({
       "customer.customerId": new mongoose.Types.ObjectId(customerId), // Use `new` to instantiate ObjectId
-    }).select("pickup endRide cancelRide startRide totalPrice _id"); // Select only the necessary fields
+    }).select("pickup endRide cancelRide startRide totalPrice _id createdAt"); // Select only the necessary fields
 
     if (!rides || rides.length === 0) {
       return res
@@ -304,7 +375,10 @@ exports.getRidesByCustomerId = async (req, res) => {
         .json({ message: "No rides found for this customer" });
     }
 
-    res.status(200).json(rides);
+    // Reverse the rides array to put the last item first
+    rides.reverse();
+
+    res.status(200).json({ rides, success: true });
   } catch (error) {
     console.error("Error fetching rides by customerId:", error); // Log error
     res
@@ -330,7 +404,7 @@ exports.getRidesByRiderId = async (req, res) => {
 
 exports.getRidesOngoingForCustomer = async (req, res) => {
   const customerId = req.user.id; // Get the customer ID from the JWT token
-
+  console.log(customerId, "customerId");
   try {
     // Fetch rides where startRide is true and endRide is false
     const rides = await RequestARide.find({
@@ -338,7 +412,7 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
       "startRide.isStarted": true, // Ensure the ride has started
       "endRide.isEnded": false, // Ensure the ride has not ended
     })
-      .select("pickup endRide cancelRide startRide totalPrice _id") // Select only the necessary fields
+      .select("pickup customer deliveryDropoff paid endRide typeOfVehicle paymentData cancelRide startRide totalPrice _id createdAt") // Select only the necessary fields
       .lean(); // Use lean() for better performance if no mongoose methods are used on the result
 
     if (!rides || rides.length === 0) {
@@ -347,7 +421,7 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
         .json({ message: "No rides found for this customer." });
     }
 
-    res.status(200).json(rides);
+    res.status(200).json({ rides, success: true });
   } catch (error) {
     console.error("Error fetching rides by customerId:", error);
     res
