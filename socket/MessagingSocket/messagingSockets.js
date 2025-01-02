@@ -420,10 +420,28 @@ const messagingSockets = (server) => {
 
         console.log("Ride updated successfully:", updatedRide);
 
+        // Create a MessageSupport document
+        const existingMessageSupport = await MessageSupport.findOne({ rideId });
+        if (!existingMessageSupport) {
+          const messageSupport = new MessageSupport({
+            rideId,
+            userId: updatedRide.rider.userId, // Rider's user ID
+            messages: [], // Initialize with an empty message array
+          });
+
+          await messageSupport.save();
+          console.log(
+            "MessageSupport document created successfully:",
+            messageSupport
+          );
+        } else {
+          console.log("MessageSupport document already exists for this ride.");
+        }
+
         // Emit event to the room (rideId) with the updated ride details
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
-          closestRider: rider,
+          rider: rider,
           pairing: false,
           acceptRide: true,
           startRide: false,
@@ -436,9 +454,10 @@ const messagingSockets = (server) => {
           rider,
         });
       } catch (error) {
-        console.error(`Error fetching rider with ID: ${driverId}`, error);
+        console.error(`Error processing acceptRide event:`, error);
       }
     });
+
     socket.on("startRide", async (payload) => {
       if (!payload) {
         console.error("No data received for startRide event.");
@@ -483,7 +502,7 @@ const messagingSockets = (server) => {
         // Emit event to notify all users in the ride room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
-          closestRider: rider,
+          rider: rider,
           pairing: false,
           startRide: true, // Notify that the ride has started
           endRide: false,
@@ -546,7 +565,7 @@ const messagingSockets = (server) => {
         // Emit event to notify all users in the ride room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
-          closestRider: rider,
+          rider: rider,
           pairing: false,
           startRide: true, // Indicate the ride had started
           endRide: true, // Notify that the ride has ended
@@ -570,24 +589,24 @@ const messagingSockets = (server) => {
         console.error("No data received for cancelRide event.");
         return;
       }
-
+    
       const { rideId, driverId } = payload;
-
+      console.log(rideId, "payloadpayloadpayloadpayload");
       // Validate payload
-      if (!rideId || !driverId) {
+      if (!rideId) {
         console.error("Invalid data received for cancelRide event.", payload);
         return;
       }
 
       try {
         // Fetch the rider from the database
-        const rider = await Rider.findById(driverId);
-        if (!rider) {
-          console.error(`No rider found with ID: ${driverId}`);
-          return;
-        }
+       // const rider = await Rider.findById(driverId);
+        // if (!rider) {
+        //   console.error(`No rider found with ID: ${driverId}`);
+        //   return;
+        // }
 
-        console.log("Rider Details:", rider);
+        // console.log("Rider Details:", rider);
 
         // Update the ride with cancelRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
@@ -684,7 +703,7 @@ const messagingSockets = (server) => {
           );
           io.to(rideId).emit("rideBooked", {
             ride: ride,
-            closestRider,
+            rider: closestRider,
             pairing: true,
             startRide: ride?.startRide?.isStarted,
             acceptRide: ride?.acceptRide,

@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
+const RIDE_CANCELLATION_WINDOW = 50 * 60 * 1000; // 5 minutes in milliseconds
+
 const requestARideSchema = new mongoose.Schema(
   {
     trackingId: {
@@ -55,7 +57,6 @@ const requestARideSchema = new mongoose.Schema(
     arrivalTime: { type: Date, required: false },
 
     typeOfVehicle: {
-      // id: { type: mongoose.Schema.Types.ObjectId, required: false },
       name: { type: String, required: false },
       bikePrice: { type: Number, required: false },
     },
@@ -86,6 +87,7 @@ const requestARideSchema = new mongoose.Schema(
         ref: "User",
         required: true,
       },
+      email: { type: String, required: false },
       firstName: { type: String, required: false },
       lastName: { type: String, required: false },
       phoneNumber: { type: String, required: false },
@@ -110,7 +112,7 @@ const requestARideSchema = new mongoose.Schema(
       },
     ],
     isRated: { type: Boolean, default: false },
-   
+
     acceptRide: { type: Boolean, default: false },
     cancelRide: {
       isCancelled: { type: Boolean, default: false },
@@ -126,17 +128,98 @@ const requestARideSchema = new mongoose.Schema(
     },
     paid: {
       isPaid: { type: Boolean, default: false },
-      timestamp: { type: Date, required: false },
+      timestamp: { type: Date, default: Date.now },
       paymentMethod: {
         type: String,
         enum: ["cash", "card", "transfer"],
-        required: false,
+        default: "card",
       },
-      paymentService: { type: String, enum: ["100pay"], required: false },
+      paymentService: { type: String, enum: ["paystack"], default: "paystack" },
+      details: {
+        id: { type: String },
+        domain: { type: String },
+        status: { type: String, default: "pending" },
+        reference: { type: String },
+        receipt_number: { type: String, default: null },
+        amount: { type: Number },
+        message: { type: String, default: null },
+        gateway_response: { type: String },
+        paid_at: { type: Date },
+        created_at: { type: Date },
+        channel: { type: String },
+        currency: { type: String },
+        authorization: {
+          authorization_code: { type: String },
+          bin: { type: String },
+          last4: { type: String },
+          exp_month: { type: String },
+          exp_year: { type: String },
+          channel: { type: String },
+          card_type: { type: String },
+          bank: { type: String },
+          country_code: { type: String },
+          brand: { type: String },
+          reusable: { type: Boolean },
+          signature: { type: String },
+          account_name: { type: String, default: null },
+        },
+        customer: {
+          id: { type: Number },
+          first_name: { type: String, default: null },
+          last_name: { type: String, default: null },
+          email: { type: String },
+          customer_code: { type: String },
+          phone: { type: String, default: null },
+          metadata: { type: String, default: null },
+          risk_action: { type: String },
+          international_format_phone: { type: String, default: null },
+        },
+      },
     },
   },
   { timestamps: true }
 );
+
+// Middleware to automatically cancel ride if not accepted within 5 minutes
+requestARideSchema.pre("save", async function (next) {
+  if (!this.acceptRide && this.createdAt) {
+    const fiveMinutesAgo = new Date(Date.now() - RIDE_CANCELLATION_WINDOW);
+    if (this.createdAt < fiveMinutesAgo) {
+      this.cancelRide.isCancelled = true;
+      this.cancelRide.timestamp = Date.now();
+      this.startRide.isStarted = false;
+      this.endRide.isEnded = false;
+    }
+  }
+  next();
+});
+
+// Method to update all unaccepted rides
+requestARideSchema.statics.cancelUnacceptedRides = async function () {
+  try {
+    const currentTime = Date.now();
+
+    // Find and update unaccepted rides that are older than the cancellation window
+    const result = await this.updateMany(
+      {
+        acceptRide: false,
+        createdAt: { $lt: new Date(currentTime - RIDE_CANCELLATION_WINDOW) },
+      },
+      {
+        $set: {
+          "cancelRide.isCancelled": true,
+          "cancelRide.timestamp": currentTime,
+          "startRide.isStarted": false,
+          "endRide.isEnded": false,
+        },
+      }
+    );
+
+    console.log(`${result.modifiedCount} ride(s) updated to cancelled.`);
+  } catch (error) {
+    console.error("Error canceling unaccepted rides:", error);
+  }
+};
 
 const RequestARide = mongoose.model("RequestARide", requestARideSchema);
 module.exports = RequestARide;
