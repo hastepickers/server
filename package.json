@@ -19,7 +19,6 @@
   "author": "ibeneme",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.7.9",
     "backblaze-b2": "^1.7.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
