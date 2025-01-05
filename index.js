@@ -16,6 +16,11 @@ const chatsMessages = require("./routes/Customer/messagesRouter");
 // Import the messagingSockets module
 const messagingSockets = require("./socket/MessagingSocket/messagingSockets"); // Adjust the path if necessary
 const payment = require("./routes/Payment");
+const riders = require("./routes/Rider/RidersRouter");
+const company = require("./routes/Rider/CompanyRouter");
+const userRiders = require("./routes/Rider/UserRiderRouter");
+const wallet = require("./routes/Rider/WalletRouter");
+
 // Load environment variables from .env file
 dotenv.config();
 
@@ -54,11 +59,18 @@ app.use("/api/vehicle", typeOfVehicle);
 app.use("/api/chat", verifyToken, chatsMessages);
 app.use("/api/payment", payment);
 
+app.use("/api/v1/auth/riders", riders);
+app.use("/api/v1/user/riders", userRiders);
+app.use("/api/v1/wallet/riders", wallet);
+
+app.use("/api/v1/auth/company", company);
+
 // Initialize Socket.IO messaging functionality
 messagingSockets(server); // Set up messaging for Socket.IO
 
 // Set the port and start the server
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });

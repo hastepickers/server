@@ -13,7 +13,6 @@ const generateOtp = (length) => {
   return otp;
 };
 
-
 exports.getUserProfile = async (req, res) => {
   const userId = req.user.id; // Get user ID from JWT
   console.log(userId, "userIduserId");
@@ -315,6 +314,18 @@ exports.getUserByPhoneNumber = async (req, res) => {
   } catch (error) {
     console.error("Error fetching user by phone number:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+exports.healthCheck = (req, res) => {
+  try {
+    // You can add any additional checks here, like checking the DB or other services
+    console.log("Server is up and runningss");
+    res
+      .status(200)
+      .send({ success: true, message: "Server is active and running" });
+  } catch (err) {
+    console.error("Error in health check:", err);
+    res.status(500).send({ message: "Server is down" });
   }
 };
 
