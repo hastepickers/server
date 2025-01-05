@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema({
@@ -10,7 +9,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: false },
   referralCode: { type: String, required: false },
   imageUrl: { type: String, required: false },
-  password: { type: String, required: false },
+  //password: { type: String, required: false },
   verified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   pushNotifications: { type: Boolean, default: true },
@@ -24,16 +23,10 @@ const userSchema = new mongoose.Schema({
     enum: ["Stepper", "Buddy", "Big Stepper", "Governor"],
     default: "Stepper",
   },
-  rideCount: { type: Number, default: 0 },  // New rideCount field to store the ride count
+  rideCount: { type: Number, default: 0 }, // New rideCount field to store the ride count
 });
 
-// Automatically hash password before saving
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
-});
+
 
 // Method to generate promo code
 userSchema.methods.generatePromoCode = async function () {
@@ -59,7 +52,7 @@ userSchema.pre("save", async function (next) {
 userSchema.methods.updateRideCount = async function () {
   const rideCount = await RequestARide.countDocuments({
     "customer.customerId": this._id,
-    "endRide.isEnded": true
+    "endRide.isEnded": true,
   });
   this.rideCount = rideCount;
   await this.save();
@@ -77,7 +70,7 @@ userSchema.pre("save", function (next) {
 
   fieldsToTrack.forEach((field) => {
     if (this.isModified(field)) {
-      this[field] = this[field]; 
+      this[field] = this[field];
     }
   });
 
