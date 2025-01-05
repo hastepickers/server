@@ -1,7 +1,5 @@
-
 //const Company = require("../models/Company");
 const { generateCompanyToken } = require("../../utils/ridertokenUtil");
-const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const CompanyOTP = require("../../models/Rider/CompanyOTP");
@@ -21,15 +19,7 @@ exports.loginCompany = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const company = await Company.findOne({ email });
-    if (!company) return res.status(404).json({ message: "Company not found" });
-
-    const isMatch = await bcrypt.compare(password, company.password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Invalid credentials" });
-
-    const tokens = generateCompanyToken(company._id);
-    res.status(200).json({ message: "Login successful", tokens });
+    res.status(200).json({ message: "Login successful" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -40,12 +30,7 @@ exports.resetCompanyPassword = async (req, res) => {
   try {
     const { email, newPassword } = req.body;
 
-    const company = await Company.findOne({ email });
-    if (!company) return res.status(404).json({ message: "Company not found" });
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    company.password = hashedPassword;
-    await company.save();
 
     res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
@@ -166,12 +151,6 @@ exports.resetPassword = async (req, res) => {
   try {
     const { email, newPassword } = req.body;
 
-    const company = await Company.findOne({ email });
-    if (!company) return res.status(404).json({ message: "Company not found" });
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    company.password = hashedPassword;
-    await company.save();
 
     res.status(200).json({ message: "Password reset successful" });
   } catch (error) {

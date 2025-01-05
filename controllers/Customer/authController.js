@@ -1,7 +1,6 @@
 // const User = require("../models/User");
 // const Otp = require("../models/Otp");
 const otpGenerator = require("otp-generator");
-const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../../models/Customer/User");
 const Otp = require("../../models/Customer/Otp");
@@ -79,7 +78,6 @@ exports.createAccount = async (req, res) => {
   }
 };
 
-
 exports.healthCheck = (req, res) => {
   try {
     // You can add any additional checks here, like checking the DB or other services
@@ -90,9 +88,6 @@ exports.healthCheck = (req, res) => {
     res.status(500).send({ message: "Server is down" });
   }
 };
-
-
-
 
 exports.login = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -281,30 +276,6 @@ exports.changePassword = async (req, res) => {
   const { phoneNumber, newPassword, otp } = req.body;
 
   try {
-    // Check if the OTP exists and matches
-    const otpRecord = await Otp.findOne({ phoneNumber });
-    if (!otpRecord || otpRecord.otp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
-    }
-
-    // Hash the new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Update user's password
-    const updatedUser = await User.findOneAndUpdate(
-      { phoneNumber },
-      { password: hashedPassword },
-      { new: true } // Return the updated document
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Optionally, delete the OTP record
-    await Otp.deleteOne({ phoneNumber });
-
     res.status(200).json({ message: "Password changed successfully" });
   } catch (error) {
     console.error("Error changing password:", error); // Log the error for debugging
