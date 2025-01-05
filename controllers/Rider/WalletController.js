@@ -1,4 +1,3 @@
-const axios = require("axios");
 const Withdrawal = require("../../models/Rider/RiderWithdrawal");
 const Earning = require("../../models/Rider/RiderEarnings");
 const Bonus = require("../../models/Rider/RiderBonus");
@@ -179,7 +178,7 @@ const getAccountDetails = async (req, res) => {
     const withdrawalsSum =
       totalWithdrawals.length > 0 ? totalWithdrawals[0].total : 0;
 
-      console.log(withdrawalsSum, 'withdrawalsSum')
+    console.log(withdrawalsSum, "withdrawalsSum");
     // Calculate the balance
     const balance = earningsSum - withdrawalsSum;
 
@@ -285,12 +284,19 @@ const getAllBonuses = async (req, res) => {
 // 4. List Paystack Banks (No rider-specific data needed)
 const getBanks = async (req, res) => {
   try {
-    const response = await axios.get("https://api.paystack.co/bank", {
+    const response = await fetch("https://api.paystack.co/bank", {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${PAYSTACK_API_KEY}`,
       },
     });
-    res.status(response.status).json(response.data);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch data");
+    }
+
+    const data = await response.json();
+    res.status(response.status).json(data);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error communicating with Paystack" });
@@ -308,15 +314,22 @@ const resolveAccount = async (req, res) => {
   }
 
   try {
-    const response = await axios.get(
+    const response = await fetch(
       `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
       {
+        method: "GET",
         headers: {
           Authorization: `Bearer ${PAYSTACK_API_KEY}`,
         },
       }
     );
-    res.status(response.status).json(response.data);
+
+    if (!response.ok) {
+      throw new Error("Failed to resolve account");
+    }
+
+    const data = await response.json();
+    res.status(response.status).json(data);
   } catch (error) {
     console.error("Error parsing response:", error);
     res.status(500).json({ message: "Error connecting to Paystack", error });
