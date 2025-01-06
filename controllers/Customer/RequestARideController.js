@@ -326,26 +326,27 @@ exports.updateRideStatus = async (req, res) => {
   }
 };
 
-
 exports.getCompletedRides = async (req, res) => {
   try {
-   const userId = req.user.id; 
+    const userId = req.user.id;
 
     // Fetch rides with 'isEnded' set to true and customerId matching the user ID
     const completedRides = await RequestARide.find({
       "customer.customerId": userId,
-      "endRide.isEnded": true
+      "endRide.isEnded": true,
     });
 
     if (!completedRides.length) {
-      return res.status(404).json({ message: 'No completed rides found for this user' });
+      return res
+        .status(404)
+        .json({ message: "No completed rides found for this user" });
     }
 
     // Return the completed rides
     return res.status(200).json({ completedRides });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -412,7 +413,9 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
       "startRide.isStarted": true, // Ensure the ride has started
       "endRide.isEnded": false, // Ensure the ride has not ended
     })
-      .select("pickup customer deliveryDropoff paid endRide typeOfVehicle paymentData cancelRide startRide totalPrice _id createdAt") // Select only the necessary fields
+      .select(
+        "pickup customer deliveryDropoff paid endRide typeOfVehicle paymentData cancelRide startRide totalPrice _id createdAt rider"
+      ) // Select only the necessary fields
       .lean(); // Use lean() for better performance if no mongoose methods are used on the result
 
     if (!rides || rides.length === 0) {

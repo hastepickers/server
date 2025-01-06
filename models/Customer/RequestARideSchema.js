@@ -80,6 +80,9 @@ const requestARideSchema = new mongoose.Schema(
         ridersLongitude: { type: Number, required: false },
         ridersAddress: { type: String, required: false },
       },
+      vehicleType: { type: String },
+      vehicleName: { type: String },
+      vehicleColor: { type: String },
     },
     customer: {
       customerId: {
