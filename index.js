@@ -8,7 +8,7 @@ const bodyParser = require("body-parser");
 const authRoutes = require("./routes/Customer/authRouter");
 const userRoutes = require("./routes/Customer/userRouter");
 const verifyToken = require("./utils/verifyToken");
-const customerEarningsRoutes = require("./routes/Customer/customerEarningRoutes");
+//const customerEarningsRoutes = require("./routes/Customer/customerEarningRoutes");
 const requestARide = require("./routes/Customer/requestARideRouter");
 const rider = require("./routes/Rider/RiderRouter");
 const typeOfVehicle = require("./routes/Admin/TypeOfVehicleRouter");
@@ -33,6 +33,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB connection setup
+
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -52,7 +53,7 @@ app.get("/", (req, res) => {
 // Link the authentication routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", verifyToken, userRoutes);
-app.use("/api/customer-earnings", verifyToken, customerEarningsRoutes);
+//app.use("/api/customer-earnings", verifyToken, customerEarningsRoutes);
 app.use("/api/ride", verifyToken, requestARide);
 app.use("/api/rider", rider);
 app.use("/api/vehicle", typeOfVehicle);

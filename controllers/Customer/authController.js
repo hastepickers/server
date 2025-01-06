@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../../models/Customer/User");
 const Otp = require("../../models/Customer/Otp");
 const generateTokens = require("../../utils/generateTokens");
-const CustomerEarning = require("../../models/Customer/CustomerEarnings");
+//const CustomerEarning = require("../../models/Customer/CustomerEarnings");
 
 /**
  * controllers/authController.js
@@ -168,11 +168,13 @@ exports.verifyNewAccount = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const customerEarning = new CustomerEarning({
-      balance: 0,
-      withdrawalPin: "defaultPin",
-      userId: user._id,
-    });
+    // const customerEarning = new CustomerEarning({
+    //   balance: 0,
+    //   withdrawalPin: "defaultPin",
+    //   userId: user._id,
+    // });
+
+    
     await customerEarning.save();
 
     await Otp.deleteOne({ phoneNumber });

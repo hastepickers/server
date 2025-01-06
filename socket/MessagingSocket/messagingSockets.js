@@ -1,8 +1,10 @@
 const { Server } = require("socket.io");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
-const Rider = require("../../models/Rider/RiderSchema");
+//const Rider = require("../../models/Rider/RiderSchema");
 const MessageSupport = require("../../models/Customer/MessageSupport");
 const DriversMessage = require("../../models/Customer/DriversMessage");
+const { default: mongoose } = require("mongoose");
+const Rider = require("../../models/Rider/RiderSchema");
 // Calculate distance between two geographic points using the Haversine formula
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Radius of the Earth in kilometers
@@ -375,7 +377,7 @@ const messagingSockets = (server) => {
         console.error("No data received for acceptRide event.");
         return;
       }
-
+      console.log(payload, "hjdriverIddriverId");
       const { rideId, driverId, ride } = payload;
 
       // Validate payload
@@ -384,78 +386,97 @@ const messagingSockets = (server) => {
         return;
       }
 
+      // Fetch all riders from the database
+      const allRiders = await Rider.find({}); // Empty object means no filter
+      if (allRiders.length === 0) {
+        console.log("No riders found in the database.");
+      } else {
+        console.log("All riders:", allRiders);
+      }
+
+      let rider; // Declare rider outside try block
+
       try {
-        // Fetch the rider (driver)
-        const rider = await Rider.findById(driverId);
+        if (!mongoose.Types.ObjectId.isValid(driverId)) {
+          console.error(`Invalid ObjectId: ${driverId}`);
+          return;
+        }
+
+        // Fetch rider details
+        rider = await Rider.findById(driverId); // Uses _id field internally
         if (!rider) {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
-
-        console.log(`Rider Details:`, rider, ride);
-
-        // Update the ride with the rider details
-        const updatedRide = await RequestARide.findByIdAndUpdate(
-          rideId,
-          {
-            acceptRide: true,
-            rider: {
-              userId: rider._id,
-              firstName: rider.firstName,
-              lastName: rider.lastName,
-              plateNumber: rider.plateNumber,
-              imageUrl: rider.imageUrl,
-              phoneNumber: rider.phoneNumber,
-              driverRating: rider.driverRating,
-              riderLocation: rider.riderLocation,
-            },
-          },
-          { new: true }
-        );
-
-        if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
-          return;
-        }
-
-        console.log("Ride updated successfully:", updatedRide);
-
-        // Create a MessageSupport document
-        const existingMessageSupport = await MessageSupport.findOne({ rideId });
-        if (!existingMessageSupport) {
-          const messageSupport = new MessageSupport({
-            rideId,
-            userId: updatedRide.rider.userId, // Rider's user ID
-            messages: [], // Initialize with an empty message array
-          });
-
-          await messageSupport.save();
-          console.log(
-            "MessageSupport document created successfully:",
-            messageSupport
-          );
-        } else {
-          console.log("MessageSupport document already exists for this ride.");
-        }
-
-        // Emit event to the room (rideId) with the updated ride details
-        io.to(rideId).emit("rideBooked", {
-          ride: updatedRide,
-          rider: rider,
-          pairing: false,
-          acceptRide: true,
-          startRide: false,
-          endRide: false,
-          reportRide: false,
-        });
-
-        console.log("Accept Ride Event Processed Successfully:", {
-          ride,
-          rider,
-        });
+        console.log("Rider found:", rider);
       } catch (error) {
-        console.error(`Error processing acceptRide event:`, error);
+        console.error("Error fetching rider:", error.message);
+        return; // Exit if error occurs
       }
+
+      console.log("Rider Details:", rider, ride);
+
+      const rideObject = ride?._id;
+      // Update the ride with the rider details
+      const updatedRide = await RequestARide.findByIdAndUpdate(
+        rideObject,
+        {
+          acceptRide: true,
+          rider: {
+            userId: rider._id,
+            firstName: rider.firstName,
+            lastName: rider.lastName,
+            plateNumber: rider.plateNumber,
+            imageUrl: rider.imageUrl,
+            phoneNumber: rider.phoneNumber,
+            driverRating: rider.driverRating,
+            riderLocation: rider.riderLocation,
+            vehicleType: rider?.vehicleType,
+            vehicleName: rider?.vehicleName,
+            vehicleColor: rider?.vehicleColor,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedRide) {
+        console.error(`No ride found with ID: ${rideId}`);
+        return;
+      }
+
+      console.log("Ride updated successfully:", updatedRide);
+
+      // Create a MessageSupport document
+      const existingMessageSupport = await MessageSupport.findOne({ rideId });
+      if (!existingMessageSupport) {
+        const messageSupport = new MessageSupport({
+          rideId,
+          userId: updatedRide.rider.userId, // Rider's user ID
+          messages: [], // Initialize with an empty message array
+        });
+
+        await messageSupport.save();
+        console.log(
+          "MessageSupport document created successfully:",
+          messageSupport
+        );
+      } else {
+        console.log("MessageSupport document already exists for this ride.");
+      }
+      // io.to(rideId).emit("rideBooked", {
+      io.to(rideObject).emit("rideBooked", {
+        ride: updatedRide,
+        rider: rider,
+        pairing: false,
+        acceptRide: true,
+        startRide: false,
+        endRide: false,
+        reportRide: false,
+      });
+
+      console.log("Accept Ride Event Processed Successfully:", {
+        rideObject,
+      });
     });
 
     socket.on("startRide", async (payload) => {
@@ -466,6 +487,7 @@ const messagingSockets = (server) => {
 
       const { rideId, driverId, ride } = payload;
 
+      const rideObject = ride?._id;
       // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for startRide event.", payload);
@@ -484,7 +506,7 @@ const messagingSockets = (server) => {
 
         // Update the ride with startRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
-          rideId,
+          rideObject,
           {
             "startRide.isStarted": true, // Set startRide to true
             "startRide.timestamp": new Date(), // Set the current timestamp
@@ -493,14 +515,14 @@ const messagingSockets = (server) => {
         );
 
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
+          console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
 
         console.log("Ride updated successfully:", updatedRide);
 
         // Emit event to notify all users in the ride room
-        io.to(rideId).emit("rideBooked", {
+        io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
           rider: rider,
           pairing: false,
@@ -527,8 +549,8 @@ const messagingSockets = (server) => {
         return;
       }
 
-      const { rideId, driverId } = payload;
-
+      const { rideId, driverId, ride } = payload;
+      const rideObject = ride?._id;
       // Validate payload
       if (!rideId || !driverId) {
         console.error("Invalid data received for endRide event.", payload);
@@ -547,7 +569,7 @@ const messagingSockets = (server) => {
 
         // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
-          rideId,
+          rideObject,
           {
             "endRide.isEnded": true, // Set endRide to true
             "endRide.timestamp": new Date(), // Set the current timestamp
@@ -556,14 +578,14 @@ const messagingSockets = (server) => {
         );
 
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
+          console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
 
         console.log("Ride updated successfully:", updatedRide);
 
         // Emit event to notify all users in the ride room
-        io.to(rideId).emit("rideBooked", {
+        io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
           rider: rider,
           pairing: false,
@@ -578,7 +600,7 @@ const messagingSockets = (server) => {
         });
       } catch (error) {
         console.error(
-          `Error processing endRide event for ride ID: ${rideId}`,
+          `Error processing endRide event for ride ID: ${rideObject}`,
           error
         );
       }
@@ -589,7 +611,7 @@ const messagingSockets = (server) => {
         console.error("No data received for cancelRide event.");
         return;
       }
-    
+
       const { rideId, driverId } = payload;
       console.log(rideId, "payloadpayloadpayloadpayload");
       // Validate payload
@@ -600,7 +622,7 @@ const messagingSockets = (server) => {
 
       try {
         // Fetch the rider from the database
-       // const rider = await Rider.findById(driverId);
+        // const rider = await Rider.findById(driverId);
         // if (!rider) {
         //   console.error(`No rider found with ID: ${driverId}`);
         //   return;
@@ -670,39 +692,35 @@ const messagingSockets = (server) => {
           return;
         }
 
-        // Join the socket to the ride's room and emit ride details
         socket.join(rideId);
-        const closestRiders = await getClosestRiders(
-          pickupLatitude,
-          pickupLongitude
-        );
-        console.log(closestRiders, "closestRiders");
-        if (closestRiders.length > 0) {
+
+        const use = "6777ce3701ac7202127a0e6e";
+        // Notify the closest rider specifically
+
+        try {
+          // Fetch closest riders
+          const closestRiders = await Rider.findById(use); // Replace with actual logic to fetch multiple riders if applicable
+          if (!closestRiders) {
+            console.error("No riders found");
+            socket.emit("joinedRide", {
+              message: "No riders found",
+              error: true,
+            });
+            return; // Exit early if no riders are found
+          }
+
+          console.log(closestRiders, "closestRiders");
+
+          // Emit closest riders to the socket
           socket.emit("closestRiders", { riders: closestRiders });
-          socket.emit("joinedRide", {
-            rideDetails: closestRiders,
-            message: "Riders found",
-            error: false,
-            rideId,
-            ride,
-            pairing: true,
-            startRide: false,
-            endRide: false,
-            reportRide: false,
-            acceptRide: false,
-          });
 
-          // Select the first closest rider (or apply a selection logic)
-          const closestRider = closestRiders[0];
-          const use = "6777ce3701ac7202127a0e6e";
-          // Notify the closest rider specifically
+          // Select the first closest rider (replace with your own logic if needed)
+          const closestRider = closestRiders; // Adjust based on data structure
+          console.log(closestRider, "closestRider");
 
-          console.log(
-            ride?.startRide?.isStarted,
-            " ride?.startRide?.isStarted"
-          );
+          // Emit ride booking details to relevant sockets
           io.to(rideId).emit("rideBooked", {
-            ride: ride,
+            ride,
             rider: closestRider,
             pairing: true,
             startRide: ride?.startRide?.isStarted,
@@ -711,6 +729,7 @@ const messagingSockets = (server) => {
             reportRide: ride?.startRide?.reportRide,
           });
 
+          // Notify the selected closest rider
           io.to(use).emit("riderJoined", {
             message: `Ride booked!`,
             rideDetails: closestRider,
@@ -718,9 +737,10 @@ const messagingSockets = (server) => {
             rideId,
             ride,
           });
-        } else {
+        } catch (error) {
+          console.error("Error fetching rider details:", error.message);
           socket.emit("joinedRide", {
-            message: "No riders found",
+            message: "An error occurred while fetching rider details",
             error: true,
           });
         }
