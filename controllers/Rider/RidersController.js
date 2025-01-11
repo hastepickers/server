@@ -61,6 +61,7 @@ exports.createRider = async (req, res) => {
   }
 };
 
+
 // Send OTP
 exports.sendOtp = async (req, res) => {
   try {
