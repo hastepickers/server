@@ -5,6 +5,7 @@ const User = require("../../models/Customer/User");
 const Rider = require("../../models/Rider/RiderSchema");
 const mongoose = require("mongoose");
 const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
+const RideSocket = require("../../models/Rider/RideSocket");
 
 // Create a new Request a Ride
 exports.createRide = async (req, res) => {
@@ -416,6 +417,7 @@ exports.getRideSocketLogs = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // Get all rides by riderId
 exports.getRidesByRiderId = async (req, res) => {
