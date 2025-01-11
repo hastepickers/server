@@ -684,6 +684,9 @@ const messagingSockets = (server) => {
         const {
           pickup: { pickupLatitude, pickupLongitude },
         } = ride;
+
+        const { pickup, deliveryDropoff } = ride;
+
         if (!pickupLatitude || !pickupLongitude) {
           console.log("Invalid pickup location in ride details");
           socket.emit("rideError", {
@@ -736,6 +739,10 @@ const messagingSockets = (server) => {
             error: false,
             rideId,
             ride,
+            driverId: use,
+            pickup: pickup,
+            deliveryDropoff: deliveryDropoff,
+            status: "pairing",
           });
         } catch (error) {
           console.error("Error fetching rider details:", error.message);
