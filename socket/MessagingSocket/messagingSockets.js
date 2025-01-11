@@ -748,6 +748,7 @@ const messagingSockets = (server) => {
           });
 
           // Save the emitted data into the database
+          // Save the emitted data into the database
           const rideSocketData = new RideSocket({
             rideId,
             // rideDetails: closestRider,
@@ -758,7 +759,13 @@ const messagingSockets = (server) => {
             status: "pairing",
           });
 
-          await rideSocketData.save();
+          try {
+            await rideSocketData.save(); // Attempt to save the ride socket data
+            console.log("RideSocket data saved successfully:", rideSocketData);
+          } catch (error) {
+            // Handle errors during save operation
+            console.error("Error saving rideSocket data:", error.message);
+          }
         } catch (error) {
           console.error("Error fetching rider details:", error.message);
           socket.emit("joinedRide", {

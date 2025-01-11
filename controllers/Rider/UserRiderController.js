@@ -24,29 +24,44 @@ exports.getRiderProfile = async (req, res) => {
 
 exports.getRideSocketLogs = async (req, res) => {
   try {
-    const driverId = req.user.id;
+    const driverId = req.riderId;
+
+    // Log incoming driverId and the request
+    console.log("Received Request to Get Ride Socket Logs");
+    console.log("Driver ID:", driverId);
 
     // Validate input
     if (!driverId) {
+      console.log("Error: Driver ID is missing");
       return res.status(400).json({ message: "Driver ID is required" });
     }
 
     // Query the database for rides matching the criteria
+    console.log(
+      "Querying the database for rideSockets with driverId:",
+      driverId
+    );
     const rideSockets = await RideSocket.find(
       { driverId, status: "pairing" }, // Filters
       { rideId: 1, pickup: 1, _id: 0 } // Fields to return
     );
 
+    // Log the result of the database query
+    console.log("Database Query Result:", rideSockets);
+
     if (rideSockets.length === 0) {
+      console.log("No matching ride sockets found for driverId:", driverId);
       return res
-        .status(404)
+        .status(400)
         .json({ message: "No matching ride sockets found" });
     }
 
     // Respond with the filtered data
-    res.status(200).json(rideSockets);
+    console.log("Sending Response with rideSocket data");
+    res.status(200).json({ rideSockets: rideSockets, success: true });
   } catch (error) {
-    console.error(error);
+    // Log the error
+    console.error("Error occurred:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
