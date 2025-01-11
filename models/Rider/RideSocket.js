@@ -9,7 +9,7 @@ const RideSocketSchema = new mongoose.Schema(
     },
     rideDetails: {
       type: Object,
-      required: true,
+      required: false,
     },
     ride: {
       type: Object,
