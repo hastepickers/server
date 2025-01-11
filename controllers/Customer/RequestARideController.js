@@ -471,7 +471,7 @@ exports.rateRider = async (req, res) => {
     // Now, find the ride by the rideId and toggle the isRated field
     const ride = await RequestARide.findById(rideId); // Or use another way to identify the ride
     if (!ride) {
-      return res.status(404).json({ error: "Ride not found." });
+      return res.status(404).json({ error: "Ride not found.", success: false });
     }
 
     // Toggle isRated to true
@@ -490,11 +490,13 @@ exports.rateRider = async (req, res) => {
         id: ride._id,
         isRated: ride.isRated,
       },
+      success: true,
     });
   } catch (error) {
     console.error("Error updating rider rating:", error);
-    return res
-      .status(500)
-      .json({ error: "An error occurred while rating the rider." });
+    return res.status(500).json({
+      success: false,
+      error: "An error occurred while rating the rider.",
+    });
   }
 };
