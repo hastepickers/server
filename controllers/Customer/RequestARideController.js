@@ -387,6 +387,36 @@ exports.getRidesByCustomerId = async (req, res) => {
       .json({ message: "Error fetching rides by customerId", error });
   }
 };
+
+exports.getRideSocketLogs = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+
+    // Validate input
+    if (!driverId) {
+      return res.status(400).json({ message: "Driver ID is required" });
+    }
+
+    // Query the database for rides matching the criteria
+    const rideSockets = await RideSocket.find(
+      { driverId, status: "pairing" }, // Filters
+      { rideId: 1, pickup: 1, _id: 0 } // Fields to return
+    );
+
+    if (rideSockets.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No matching ride sockets found" });
+    }
+
+    // Respond with the filtered data
+    res.status(200).json(rideSockets);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 // Get all rides by riderId
 exports.getRidesByRiderId = async (req, res) => {
   const { riderId } = req.params; // Get the riderId from the route params

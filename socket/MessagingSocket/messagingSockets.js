@@ -5,6 +5,8 @@ const MessageSupport = require("../../models/Customer/MessageSupport");
 const DriversMessage = require("../../models/Customer/DriversMessage");
 const { default: mongoose } = require("mongoose");
 const Rider = require("../../models/Rider/RiderSchema");
+const RideSocket = require("../../models/Rider/RideSocket");
+
 // Calculate distance between two geographic points using the Haversine formula
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Radius of the Earth in kilometers
@@ -744,6 +746,19 @@ const messagingSockets = (server) => {
             deliveryDropoff: deliveryDropoff,
             status: "pairing",
           });
+
+          // Save the emitted data into the database
+          const rideSocketData = new RideSocket({
+            rideId,
+            // rideDetails: closestRider,
+            ride,
+            driverId: use,
+            pickup,
+            deliveryDropoff,
+            status: "pairing",
+          });
+
+          await rideSocketData.save();
         } catch (error) {
           console.error("Error fetching rider details:", error.message);
           socket.emit("joinedRide", {
