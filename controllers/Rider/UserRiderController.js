@@ -4,7 +4,7 @@ const Rider = require("../../models/Rider/RiderSchema");
 const RidersOtp = require("../../models/Rider/RidersOtp");
 const { fail } = require("assert");
 //const RidersOtp = require("../../models/Rider/RidersOtp");
-
+const RideSocket = require("../../models/Rider/RideSocket");
 // Get Rider's Profile
 exports.getRiderProfile = async (req, res) => {
   try {
@@ -21,7 +21,6 @@ exports.getRiderProfile = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 exports.getRideSocketLogs = async (req, res) => {
   try {
@@ -51,7 +50,6 @@ exports.getRideSocketLogs = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 // Update Rider's Profile
 exports.updateRiderProfile = async (req, res) => {
