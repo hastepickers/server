@@ -41,9 +41,10 @@ exports.getRideSocketLogs = async (req, res) => {
       "Querying the database for rideSockets with driverId:",
       driverId
     );
+
     const rideSockets = await RideSocket.find(
       { driverId, status: "pairing" }, // Filters
-      { rideId: 1, pickup: 1, _id: 0 } // Fields to return
+      { rideId: 1, pickup: 1, ride: 1, _id: 0 } // Fields to return
     );
 
     // Log the result of the database query
