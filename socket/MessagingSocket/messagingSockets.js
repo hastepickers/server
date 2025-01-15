@@ -379,33 +379,27 @@ const messagingSockets = (server) => {
         console.error("No data received for acceptRide event.");
         return;
       }
+    
       console.log(payload, "hjdriverIddriverId");
+    
       const { rideId, driverId, ride } = payload;
-
+    
       // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for acceptRide event.", payload);
         return;
       }
-
-      // Fetch all riders from the database
-      const allRiders = await Rider.find({}); // Empty object means no filter
-      if (allRiders.length === 0) {
-        console.log("No riders found in the database.");
-      } else {
-        console.log("All riders:", allRiders);
-      }
-
-      let rider; // Declare rider outside try block
-
+    
+      let rider;
+    
       try {
         if (!mongoose.Types.ObjectId.isValid(driverId)) {
           console.error(`Invalid ObjectId: ${driverId}`);
           return;
         }
-
+    
         // Fetch rider details
-        rider = await Rider.findById(driverId); // Uses _id field internally
+        rider = await Rider.findById(driverId);
         if (!rider) {
           console.error(`No rider found with ID: ${driverId}`);
           return;
@@ -413,89 +407,107 @@ const messagingSockets = (server) => {
         console.log("Rider found:", rider);
       } catch (error) {
         console.error("Error fetching rider:", error.message);
-        return; // Exit if error occurs
-      }
-
-      console.log("Rider Details:", rider, ride);
-
-      const rideObject = ride?._id;
-      // Update the ride with the rider details
-      const updatedRide = await RequestARide.findByIdAndUpdate(
-        rideObject,
-        {
-          acceptRide: true,
-          rider: {
-            userId: rider._id,
-            firstName: rider.firstName,
-            lastName: rider.lastName,
-            plateNumber: rider.plateNumber,
-            imageUrl: rider.imageUrl,
-            phoneNumber: rider.phoneNumber,
-            driverRating: rider.driverRating,
-            riderLocation: rider.riderLocation,
-            vehicleType: rider?.vehicleType,
-            vehicleName: rider?.vehicleName,
-            vehicleColor: rider?.vehicleColor,
-          },
-        },
-        { new: true }
-      );
-
-      if (!updatedRide) {
-        console.error(`No ride found with ID: ${rideId}`);
         return;
       }
-
-      console.log("Ride updated successfully:", updatedRide);
-
-      // Create a MessageSupport document
-      const existingMessageSupport = await MessageSupport.findOne({ rideId });
-      if (!existingMessageSupport) {
-        const messageSupport = new MessageSupport({
-          rideId,
-          userId: updatedRide.rider.userId, // Rider's user ID
-          messages: [], // Initialize with an empty message array
-        });
-
-        await messageSupport.save();
-        console.log(
-          "MessageSupport document created successfully:",
-          messageSupport
+    
+      console.log("Rider Details:", rider, ride);
+    
+      const rideObject = rideId;
+    
+      try {
+        // Update the status in RideSocket schema
+        const updatedRideSocket = await RideSocket.findOneAndUpdate(
+          { rideId }, // Query condition
+          { status: "accepted" }, // Update operation
+          { new: true } // Return the updated document
         );
-      } else {
-        console.log("MessageSupport document already exists for this ride.");
+    
+        if (!updatedRideSocket) {
+          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          return;
+        }
+    
+        console.log("RideSocket status updated successfully:", updatedRideSocket);
+    
+        // Update the ride details in RequestARide schema
+        const updatedRide = await RequestARide.findByIdAndUpdate(
+          rideObject,
+          {
+            acceptRide: true,
+            rider: {
+              userId: rider._id,
+              firstName: rider.firstName,
+              lastName: rider.lastName,
+              plateNumber: rider.plateNumber,
+              imageUrl: rider.imageUrl,
+              phoneNumber: rider.phoneNumber,
+              driverRating: rider.driverRating,
+              riderLocation: rider.riderLocation,
+              vehicleType: rider?.vehicleType,
+              vehicleName: rider?.vehicleName,
+              vehicleColor: rider?.vehicleColor,
+            },
+          },
+          { new: true }
+        );
+    
+        if (!updatedRide) {
+          console.error(`No ride found with ID: ${rideId}`);
+          return;
+        }
+    
+        console.log("RequestARide updated successfully:", updatedRide);
+    
+        // Create a MessageSupport document if it doesn't exist
+        const existingMessageSupport = await MessageSupport.findOne({ rideId });
+        if (!existingMessageSupport) {
+          const messageSupport = new MessageSupport({
+            rideId,
+            userId: updatedRide.rider.userId, // Rider's user ID
+            messages: [], // Initialize with an empty message array
+          });
+    
+          await messageSupport.save();
+          console.log(
+            "MessageSupport document created successfully:",
+            messageSupport
+          );
+        } else {
+          console.log("MessageSupport document already exists for this ride.");
+        }
+    
+        // Emit updated ride data to the rideId room
+        io.to(rideObject).emit("rideBooked", {
+          ride: updatedRide,
+          rider: rider,
+          pairing: false,
+          acceptRide: true,
+          startRide: false,
+          endRide: false,
+          reportRide: false,
+        });
+    
+        console.log("Accept Ride Event Processed Successfully:", { rideObject });
+      } catch (error) {
+        console.error("Error processing acceptRide event:", error.message);
       }
-      // io.to(rideId).emit("rideBooked", {
-      io.to(rideObject).emit("rideBooked", {
-        ride: updatedRide,
-        rider: rider,
-        pairing: false,
-        acceptRide: true,
-        startRide: false,
-        endRide: false,
-        reportRide: false,
-      });
-
-      console.log("Accept Ride Event Processed Successfully:", {
-        rideObject,
-      });
     });
-
     socket.on("startRide", async (payload) => {
       if (!payload) {
         console.error("No data received for startRide event.");
         return;
       }
-
+    
       const { rideId, driverId, ride } = payload;
-
-      const rideObject = ride?._id;
+    
       // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for startRide event.", payload);
         return;
       }
-
+    
+      const rideObject = rideId;
+    
       try {
         // Fetch the rider from the database
         const rider = await Rider.findById(driverId);
@@ -503,9 +515,19 @@ const messagingSockets = (server) => {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
-
-        console.log("Rider Details:", rider, ride);
-
+    
+        console.log("Rider Details:", rider);
+    
+        // Fetch and remove the ride from RideSocket schema
+        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
+    
+        if (!rideSocket) {
+          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          return;
+        }
+    
+        console.log("RideSocket entry removed successfully:", rideSocket);
+    
         // Update the ride with startRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideObject,
@@ -515,14 +537,14 @@ const messagingSockets = (server) => {
           },
           { new: true } // Return the updated document
         );
-
+    
         if (!updatedRide) {
           console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
-
+    
         console.log("Ride updated successfully:", updatedRide);
-
+    
         // Emit event to notify all users in the ride room
         io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
@@ -533,14 +555,14 @@ const messagingSockets = (server) => {
           reportRide: false,
           acceptRide: true,
         });
-
+    
         console.log("Start Ride Event Processed Successfully:", {
           ride: updatedRide,
         });
       } catch (error) {
         console.error(
           `Error processing startRide event for ride ID: ${rideId}`,
-          error
+          error.message
         );
       }
     });
