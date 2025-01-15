@@ -5,6 +5,8 @@ const RidersOtp = require("../../models/Rider/RidersOtp");
 const { fail } = require("assert");
 //const RidersOtp = require("../../models/Rider/RidersOtp");
 const RideSocket = require("../../models/Rider/RideSocket");
+const RequestARide = require("../../models/Customer/RequestARideSchema");
+const { default: mongoose } = require("mongoose");
 // Get Rider's Profile
 exports.getRiderProfile = async (req, res) => {
   try {
@@ -26,44 +28,68 @@ exports.getRideSocketLogs = async (req, res) => {
   try {
     const driverId = req.riderId;
 
-    // Log incoming driverId and the request
-    console.log("Received Request to Get Ride Socket Logs");
-    console.log("Driver ID:", driverId);
-
-    // Validate input
     if (!driverId) {
-      console.log("Error: Driver ID is missing");
-      return res.status(400).json({ message: "Driver ID is required" });
+      return res
+        .status(400)
+        .json({ message: "Driver ID is required", success: false });
     }
 
-    // Query the database for rides matching the criteria
     console.log(
       "Querying the database for rideSockets with driverId:",
       driverId
     );
 
-    const rideSockets = await RideSocket.find(
-      { driverId, status: "pairing" }, // Filters
-      { rideId: 1, pickup: 1, ride: 1, _id: 0 } // Fields to return
+    // Fetch ride sockets with the specified driver ID and status "accepted" or "pairing"
+    let rideSockets = await RideSocket.find(
+      {
+        driverId,
+        status: { $in: ["accepted", "pairing"] }, // Match "accepted" or "pairing"
+      },
+      { rideId: 1, pickup: 1, ride: 1, status: 1, _id: 0 } // Fields to return including status
     );
 
-    // Log the result of the database query
     console.log("Database Query Result:", rideSockets);
 
     if (rideSockets.length === 0) {
       console.log("No matching ride sockets found for driverId:", driverId);
       return res
         .status(400)
-        .json({ message: "No matching ride sockets found" });
+        .json({ message: "No matching ride sockets found", success: false });
     }
 
-    // Respond with the filtered data
-    console.log("Sending Response with rideSocket data");
-    res.status(200).json({ rideSockets: rideSockets, success: true });
+    // Reverse the order of the results
+    rideSockets = rideSockets.reverse();
+
+    // Successfully return the reversed ride sockets
+    res.status(200).json({ rideSockets, success: true });
   } catch (error) {
-    // Log the error
-    console.error("Error occurred:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Error occurred:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Server error", success: false, error: error.message });
+  }
+};
+// Get a ride by ID
+exports.getRideById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate the ID format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid ride ID format" });
+    }
+
+    // Find the ride by ID
+    const ride = await RequestARide.findById(id);
+
+    if (!ride) {
+      return res.status(404).json({ error: "Ride not found" });
+    }
+    console.log(ride, "ride");
+    res.status(200).json({ success: true, data: ride });
+  } catch (error) {
+    console.error("Error fetching ride by ID:", error);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
