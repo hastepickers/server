@@ -379,25 +379,25 @@ const messagingSockets = (server) => {
         console.error("No data received for acceptRide event.");
         return;
       }
-    
+
       console.log(payload, "hjdriverIddriverId");
-    
+
       const { rideId, driverId, ride } = payload;
-    
+
       // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for acceptRide event.", payload);
         return;
       }
-    
+
       let rider;
-    
+
       try {
         if (!mongoose.Types.ObjectId.isValid(driverId)) {
           console.error(`Invalid ObjectId: ${driverId}`);
           return;
         }
-    
+
         // Fetch rider details
         rider = await Rider.findById(driverId);
         if (!rider) {
@@ -409,11 +409,11 @@ const messagingSockets = (server) => {
         console.error("Error fetching rider:", error.message);
         return;
       }
-    
+
       console.log("Rider Details:", rider, ride);
-    
+
       const rideObject = rideId;
-    
+
       try {
         // Update the status in RideSocket schema
         const updatedRideSocket = await RideSocket.findOneAndUpdate(
@@ -421,14 +421,17 @@ const messagingSockets = (server) => {
           { status: "accepted" }, // Update operation
           { new: true } // Return the updated document
         );
-    
+
         if (!updatedRideSocket) {
           console.error(`No RideSocket entry found with rideId: ${rideId}`);
           return;
         }
-    
-        console.log("RideSocket status updated successfully:", updatedRideSocket);
-    
+
+        console.log(
+          "RideSocket status updated successfully:",
+          updatedRideSocket
+        );
+
         // Update the ride details in RequestARide schema
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideObject,
@@ -450,14 +453,14 @@ const messagingSockets = (server) => {
           },
           { new: true }
         );
-    
+
         if (!updatedRide) {
           console.error(`No ride found with ID: ${rideId}`);
           return;
         }
-    
+
         console.log("RequestARide updated successfully:", updatedRide);
-    
+
         // Create a MessageSupport document if it doesn't exist
         const existingMessageSupport = await MessageSupport.findOne({ rideId });
         if (!existingMessageSupport) {
@@ -466,7 +469,7 @@ const messagingSockets = (server) => {
             userId: updatedRide.rider.userId, // Rider's user ID
             messages: [], // Initialize with an empty message array
           });
-    
+
           await messageSupport.save();
           console.log(
             "MessageSupport document created successfully:",
@@ -475,7 +478,7 @@ const messagingSockets = (server) => {
         } else {
           console.log("MessageSupport document already exists for this ride.");
         }
-    
+
         // Emit updated ride data to the rideId room
         io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
@@ -486,8 +489,10 @@ const messagingSockets = (server) => {
           endRide: false,
           reportRide: false,
         });
-    
-        console.log("Accept Ride Event Processed Successfully:", { rideObject });
+
+        console.log("Accept Ride Event Processed Successfully:", {
+          rideObject,
+        });
       } catch (error) {
         console.error("Error processing acceptRide event:", error.message);
       }
@@ -497,17 +502,17 @@ const messagingSockets = (server) => {
         console.error("No data received for startRide event.");
         return;
       }
-    
+
       const { rideId, driverId, ride } = payload;
-    
+
       // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for startRide event.", payload);
         return;
       }
-    
+
       const rideObject = rideId;
-    
+
       try {
         // Fetch the rider from the database
         const rider = await Rider.findById(driverId);
@@ -515,19 +520,21 @@ const messagingSockets = (server) => {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
-    
+
         console.log("Rider Details:", rider);
-    
-        // Fetch and remove the ride from RideSocket schema
-        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
-    
+
+        const rideSocket = await RideSocket.findOneAndUpdate(
+          { rideId },
+          { status: "ongoing" },
+          { new: true } // Returns the updated document
+        );
+
         if (!rideSocket) {
           console.error(`No RideSocket entry found with rideId: ${rideId}`);
           return;
         }
-    
-        console.log("RideSocket entry removed successfully:", rideSocket);
-    
+
+        console.log("RideSocket status updated to 'ongoing':", rideSocket);
         // Update the ride with startRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideObject,
@@ -537,14 +544,14 @@ const messagingSockets = (server) => {
           },
           { new: true } // Return the updated document
         );
-    
+
         if (!updatedRide) {
           console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
-    
+
         console.log("Ride updated successfully:", updatedRide);
-    
+
         // Emit event to notify all users in the ride room
         io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
@@ -555,7 +562,7 @@ const messagingSockets = (server) => {
           reportRide: false,
           acceptRide: true,
         });
-    
+
         console.log("Start Ride Event Processed Successfully:", {
           ride: updatedRide,
         });
@@ -590,6 +597,15 @@ const messagingSockets = (server) => {
         }
 
         console.log("Rider Details:", rider);
+
+        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
+
+        if (!rideSocket) {
+          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          return;
+        }
+
+        console.log("RideSocket entry removed successfully:", rideSocket);
 
         // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
@@ -655,6 +671,15 @@ const messagingSockets = (server) => {
         // console.log("Rider Details:", rider);
 
         // Update the ride with cancelRide status
+        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
+
+        if (!rideSocket) {
+          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          return;
+        }
+
+        console.log("RideSocket entry removed successfully:", rideSocket);
+
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
           {
