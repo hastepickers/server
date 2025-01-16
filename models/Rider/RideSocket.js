@@ -57,7 +57,7 @@ const RideSocketSchema = new mongoose.Schema(
       type: String,
       required: true,
       default: "pairing",
-      enum: ["pairing", "accepted", "in-progress", "completed", "canceled"],
+      enum: ["pairing", "accepted", "ongoing"],
     },
   },
   { timestamps: true }
