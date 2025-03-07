@@ -10,7 +10,7 @@ const PAYSTACK_API_KEY = "your-paystack-api-key"; // Replace with your actual Pa
 // Add a withdrawal and link to rider
 const addWithdrawal = async (req, res) => {
   const {
-    riderId,
+    // riderId,
     amount,
     bank,
     accountName,
@@ -20,7 +20,7 @@ const addWithdrawal = async (req, res) => {
     paystackDetails,
     // header,
   } = req.body;
-
+  const riderId = req.riderId;
   if (
     !riderId ||
     !amount ||
