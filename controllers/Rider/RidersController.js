@@ -101,7 +101,7 @@ exports.sendOtp = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
   try {
     const { phoneNumber, otp } = req.body;
-    console.log(phoneNumber, otp, "phoneNumber");
+    console.log(phoneNumber, otp, "phoneNumber new");
     const riderOtp = await RiderOtp.findOne({ phoneNumber });
     if (!riderOtp || riderOtp.otp !== otp) {
       return res

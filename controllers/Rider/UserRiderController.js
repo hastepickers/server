@@ -8,19 +8,86 @@ const RideSocket = require("../../models/Rider/RideSocket");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
 const { default: mongoose } = require("mongoose");
 // Get Rider's Profile
+
 exports.getRiderProfile = async (req, res) => {
   try {
     const riderId = req.riderId; // Assuming `riderId` is stored in the token (from the middleware)
-    const rider = await Rider.findById(riderId);
+    const user = await Rider.findById(riderId);
 
-    if (!rider) {
+    if (!user) {
       return res.status(404).json({ message: "Rider not found" });
     }
-
-    res.status(200).json({ rider, success: true });
+    console.log(user, "user");
+    res.status(200).json(user);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
+  }
+};
+
+// Controller to fetch rides for a specific driver
+exports.getRidesByDriver = async (req, res) => {
+  try {
+    const driverId = req.riderId;
+    console.log(driverId, "driverIddriverId");
+    // Validate driverId
+    if (!driverId) {
+      return res.status(400).json({ message: "Driver ID is required" });
+    }
+
+    // Fetch all rides linked to the driver
+    const rideSockets = await RequestARide.find({
+      "rider.userId": driverId,
+    }).sort({
+      createdAt: -1,
+    });
+    console.log(rideSockets, "driverIddriverId");
+    if (!rideSockets.length) {
+      return res
+        .status(404)
+        .json({ message: "No rides found for this driver", status: 404 });
+    }
+
+    res.status(200).json({ success: true, rideSockets });
+  } catch (error) {
+    console.error("Error fetching ride requests:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.getRidesByStatus = async (req, res) => {
+  try {
+    const { status } = req.params;
+    const driverId = req.riderId;
+    const validStatuses = ["accepted", "ongoing", "pairing"]; // List of valid statuses
+
+    // Check if the provided status is valid
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid status. Please use 'accepted' or 'ongoing'.",
+      });
+    }
+
+    // Query to find all rides with the specific driverId and status
+    const rides = await RideSocket.find({
+      driverId: driverId,
+      status: status,
+    }).exec();
+
+    // Return the rides as a response
+    if (rides.length === 0) {
+      return res.status(404).json({
+        message: `No rides found for driver ${driverId} with status ${status}.`,
+        status: 404,
+      });
+    }
+
+    return res.status(200).json({ rides: rides, success: true });
+  } catch (error) {
+    console.error("Error fetching rides by driver and status:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching rides." });
   }
 };
 

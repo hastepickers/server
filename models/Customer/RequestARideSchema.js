@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
-const RIDE_CANCELLATION_WINDOW = 50 * 60 * 1000; // 5 minutes in milliseconds
+const RIDE_CANCELLATION_WINDOW = 200 * 60 * 1000; // 20 minutes in milliseconds
 
 const requestARideSchema = new mongoose.Schema(
   {

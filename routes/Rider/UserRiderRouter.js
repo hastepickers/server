@@ -8,6 +8,8 @@ const {
   resendOtp,
   getRideSocketLogs,
   getRideById,
+  getRidesByDriver,
+  getRidesByStatus
 } = require("../../controllers/Rider/UserRiderController");
 const { verifyRiderTokenMiddleware } = require("../../utils/ridertokenUtil");
 
@@ -23,5 +25,7 @@ router.post(
   verifyOtpAndUpdatePhoneNumber
 );
 router.put("/resend-otp", verifyRiderTokenMiddleware, resendOtp);
+router.get("/all-driver-rides", verifyRiderTokenMiddleware, getRidesByDriver);
+router.get("/all-driver-rides-by-status/:status", verifyRiderTokenMiddleware, getRidesByStatus);
 
 module.exports = router;

@@ -70,6 +70,7 @@ const getClosestRiders = async (pickupLatitude, pickupLongitude) => {
     return [];
   }
 };
+const users = {};
 
 const messagingSockets = (server) => {
   const io = new Server(server, {
@@ -82,31 +83,94 @@ const messagingSockets = (server) => {
   io.on("connection", (socket) => {
     console.log(`User connecteds: ${socket.id}`);
 
-    socket.on("offer", (data) => {
-      console.log("Offer received from:", socket.id);
-      socket.to(data.to).emit("offer", {
-        from: data.to,
-        offer: data.offer,
-      });
+    socket.on("join", (room) => {
+      socket.join(room);
+      users[socket.id] = room;
+      console.log(`User ${socket.id} joined room ${room}`);
+
+      // Notify others in the room that a new user joined
+      socket.to(room).emit("new-user", socket.id);
     });
 
-    // Relay answer to the target peer
-    socket.on("answer", (data) => {
-      console.log("Answer received from:", data.to);
-      socket.to(data.to).emit("answer", {
-        from: data.to,
-        answer: data.answer,
-      });
+    // Start a group call, notify all users in the room
+    socket.on("start-call", () => {
+      const room = users[socket.id];
+      if (!room) return;
+
+      console.log(`User ${socket.id} started a call in room ${room}`);
+
+      // Notify all users in the room about an incoming call
+      socket.to(room).emit("incoming-call", { from: socket.id });
     });
 
-    // Relay ICE candidates to the target peer
-    socket.on("ice-candidate", (data) => {
-      console.log("ICE candidate received from:", data.to);
-      socket.to(data.to).emit("ice-candidate", {
-        from: data.to,
-        candidate: data.candidate,
-      });
+    // Accept call - User confirms they are available
+    socket.on("accept-call", ({ to }) => {
+      console.log(`User ${socket.id} accepted call from ${to}`);
+      io.to(to).emit("call-accepted", { from: socket.id });
     });
+
+    // Decline call
+    socket.on("decline-call", ({ to }) => {
+      console.log(`User ${socket.id} declined call from ${to}`);
+      io.to(to).emit("call-declined", { from: socket.id });
+    });
+
+    // Send WebRTC offer to all users in the room (except sender)
+    socket.on("offer", ({ offer }) => {
+      const room = users[socket.id];
+      if (!room) return;
+
+      console.log(`User ${socket.id} is sending an offer to room ${room}`);
+
+      socket.to(room).emit("offer", { from: socket.id, offer });
+    });
+
+    // Send answer to the offer
+    socket.on("answer", ({ to, answer }) => {
+      console.log(`User ${socket.id} sent an answer to ${to}`);
+      io.to(to).emit("answer", { from: socket.id, answer });
+    });
+
+    // Forward ICE candidate to the correct peer
+    socket.on("ice-candidate", ({ to, candidate }) => {
+      console.log(`User ${socket.id} sent ICE candidate to ${to}`);
+      io.to(to).emit("ice-candidate", { from: socket.id, candidate });
+    });
+
+    socket.on("disconnect", () => {
+      const room = users[socket.id];
+      if (room) {
+        socket.to(room).emit("user-disconnected", socket.id);
+        delete users[socket.id];
+      }
+      console.log("User disconnected:", socket.id);
+    });
+
+    // socket.on("offer", (data) => {
+    //   console.log("Offer received from:", socket.id);
+    //   socket.to(data.to).emit("offer", {
+    //     from: data.to,
+    //     offer: data.offer,
+    //   });
+    // });
+
+    // // Relay answer to the target peer
+    // socket.on("answer", (data) => {
+    //   console.log("Answer received from:", data.to);
+    //   socket.to(data.to).emit("answer", {
+    //     from: data.to,
+    //     answer: data.answer,
+    //   });
+    // });
+
+    // // Relay ICE candidates to the target peer
+    // socket.on("ice-candidate", (data) => {
+    //   console.log("ICE candidate received from:", data.to);
+    //   socket.to(data.to).emit("ice-candidate", {
+    //     from: data.to,
+    //     candidate: data.candidate,
+    //   });
+    // });
 
     // Join a specific group/room
     socket.on("join_group_ride_message", async (groupId) => {
