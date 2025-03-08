@@ -29,13 +29,11 @@ exports.getRiderProfile = async (req, res) => {
 exports.getRidesByDriver = async (req, res) => {
   try {
     const driverId = req.riderId;
-    console.log(driverId, "driverIddriverId");
-    // Validate driverId
+
     if (!driverId) {
       return res.status(400).json({ message: "Driver ID is required" });
     }
 
-    // Fetch all rides linked to the driver
     const rideSockets = await RequestARide.find({
       "rider.userId": driverId,
     }).sort({
@@ -101,24 +99,25 @@ exports.getRideSocketLogs = async (req, res) => {
         .json({ message: "Driver ID is required", success: false });
     }
 
-    console.log(
-      "Querying the database for rideSockets with driverId:",
-      driverId
-    );
+    // console.log(
+    //   "Querying the database for rideSockets with driverId:",
+    //   driverId
+    // );
 
     // Fetch ride sockets with the specified driver ID and status "accepted" or "pairing"
     let rideSockets = await RideSocket.find(
       {
         driverId,
-        status: { $in: ["accepted", "pairing"] }, // Match "accepted" or "pairing"
+        //status: { $in: ["accepted", "pairing"] },
+        status: { $in: ["pairing"] }, // Match "accepted" or "pairing"
       },
       { rideId: 1, pickup: 1, ride: 1, status: 1, _id: 0 } // Fields to return including status
     );
 
-    console.log("Database Query Result:", rideSockets);
+    // console.log("Database Query Result:", rideSockets);
 
     if (rideSockets.length === 0) {
-      console.log("No matching ride sockets found for driverId:", driverId);
+      //console.log("No matching ride sockets found for driverId:", driverId);
       return res
         .status(400)
         .json({ message: "No matching ride sockets found", success: false });
@@ -130,7 +129,7 @@ exports.getRideSocketLogs = async (req, res) => {
     // Successfully return the reversed ride sockets
     res.status(200).json({ rideSockets, success: true });
   } catch (error) {
-    console.error("Error occurred:", error.message);
+    //console.error("Error occurred:", error.message);
     return res
       .status(500)
       .json({ message: "Server error", success: false, error: error.message });
@@ -152,10 +151,10 @@ exports.getRideById = async (req, res) => {
     if (!ride) {
       return res.status(404).json({ error: "Ride not found" });
     }
-    console.log(ride, "ride");
+    //console.log(ride, "ride");
     res.status(200).json({ success: true, data: ride });
   } catch (error) {
-    console.error("Error fetching ride by ID:", error);
+    //console.error("Error fetching ride by ID:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -185,25 +184,25 @@ exports.updateRiderProfile = async (req, res) => {
       email,
     } = req.body;
 
-    console.log(
-      firstName,
-      lastName,
-      phoneNumber,
-      countryCode,
-      plateNumber,
-      NIN,
-      imageUrl,
-      active,
-      verified,
-      pushNotifications,
-      newsletterSubscription,
-      promotionNotifications,
-      vehicleType,
-      vehicleName,
-      vehicleColor,
-      email,
-      req.body
-    );
+    // console.log(
+    //   firstName,
+    //   lastName,
+    //   phoneNumber,
+    //   countryCode,
+    //   plateNumber,
+    //   NIN,
+    //   imageUrl,
+    //   active,
+    //   verified,
+    //   pushNotifications,
+    //   newsletterSubscription,
+    //   promotionNotifications,
+    //   vehicleType,
+    //   vehicleName,
+    //   vehicleColor,
+    //   email,
+    //   req.body
+    // );
     // Update the rider's profile with the provided fields
     const rider = await Rider.findByIdAndUpdate(
       riderId,

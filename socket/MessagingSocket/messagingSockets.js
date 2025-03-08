@@ -444,7 +444,7 @@ const messagingSockets = (server) => {
         return;
       }
 
-      console.log(payload, "hjdriverIddriverId");
+      // console.log(payload, "hjdriverIddriverId");
 
       const { rideId, driverId, ride } = payload;
 
@@ -468,13 +468,13 @@ const messagingSockets = (server) => {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
-        console.log("Rider found:", rider);
+        //console.log("Rider found:", rider);
       } catch (error) {
         console.error("Error fetching rider:", error.message);
         return;
       }
 
-      console.log("Rider Details:", rider, ride);
+      // console.log("Rider Details:", rider, ride);
 
       const rideObject = rideId;
 
@@ -493,7 +493,7 @@ const messagingSockets = (server) => {
 
         console.log(
           "RideSocket status updated successfully:",
-          updatedRideSocket
+          // updatedRideSocket
         );
 
         // Update the ride details in RequestARide schema
@@ -523,7 +523,10 @@ const messagingSockets = (server) => {
           return;
         }
 
-        console.log("RequestARide updated successfully:", updatedRide);
+        console.log(
+          "RequestARide updated successfully:"
+          // updatedRide
+        );
 
         // Create a MessageSupport document if it doesn't exist
         const existingMessageSupport = await MessageSupport.findOne({ rideId });
@@ -537,7 +540,7 @@ const messagingSockets = (server) => {
           await messageSupport.save();
           console.log(
             "MessageSupport document created successfully:",
-            messageSupport
+            // messageSupport
           );
         } else {
           console.log("MessageSupport document already exists for this ride.");
@@ -555,12 +558,15 @@ const messagingSockets = (server) => {
         });
 
         console.log("Accept Ride Event Processed Successfully:", {
-          rideObject,
+          // rideObject,
         });
       } catch (error) {
         console.error("Error processing acceptRide event:", error.message);
       }
     });
+
+
+
     socket.on("startRide", async (payload) => {
       if (!payload) {
         console.error("No data received for startRide event.");
