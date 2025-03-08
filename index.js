@@ -57,7 +57,7 @@ app.use("/api/user", verifyToken, userRoutes);
 app.use("/api/ride", verifyToken, requestARide);
 app.use("/api/rider", rider);
 app.use("/api/vehicle", typeOfVehicle);
-app.use("/api/chat", verifyToken, chatsMessages);
+app.use("/api/chat", chatsMessages);
 app.use("/api/payment", payment);
 
 app.use("/api/v1/auth/riders", riders);

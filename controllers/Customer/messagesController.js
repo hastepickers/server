@@ -2,7 +2,7 @@ const DriversMessage = require("../../models/Customer/DriversMessage");
 const MessageSupport = require("../../models/Customer/MessageSupport");
 
 const getMessagesForUser = async (req, res) => {
-  const userId = req.user.id;
+  const { userId } = req.params;
   try {
     // Find the MessageSupport document for the given userId
     let supportChat = await MessageSupport.findOne({ userId });
@@ -11,7 +11,7 @@ const getMessagesForUser = async (req, res) => {
     if (!supportChat) {
       supportChat = new MessageSupport({ userId, messages: [] });
       await supportChat.save();
-      return
+      return;
     }
 
     // If chat exists, return the messages
@@ -24,32 +24,49 @@ const getMessagesForUser = async (req, res) => {
   }
 };
 
-
-// Controller method to fetch messages by groupId
 const getMessagesByGroupId = async (req, res) => {
   const { groupId } = req.params; // Extract groupId from URL parameters
 
   try {
-    
     // Find the document with the matching groupId
     const driversMessage = await DriversMessage.findOne({ groupId });
 
     if (!driversMessage) {
       return res
         .status(404)
-        .json({ message: "No messages found for this groupId." });
+        .json({
+          success: false,
+          status: 404,
+          message: "No messages found for this groupId.",
+        });
+    }
+
+    // Check if messages array is empty
+    if (driversMessage.messages.length === 0) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+          status: 404,
+          message: "No messages available for this groupId.",
+        });
     }
 
     // Return the messages associated with the groupId
-    return res.status(200).json(driversMessage.messages);
+    return res
+      .status(200)
+      .json({ success: true, status: 200, messages: driversMessage.messages });
   } catch (error) {
     console.error("Error fetching messages:", error);
     return res
       .status(500)
-      .json({ message: "Server error while fetching messages." });
+      .json({
+        success: false,
+        status: 500,
+        message: "Server error while fetching messages.",
+      });
   }
 };
-
 // Export all methods
 module.exports = {
   getMessagesForUser,
