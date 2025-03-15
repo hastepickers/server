@@ -6,8 +6,44 @@ const DriversMessage = require("../../models/Customer/DriversMessage");
 const { default: mongoose } = require("mongoose");
 const Rider = require("../../models/Rider/RiderSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
-
+const RiderEarnings = require("../../models/Rider/RiderEarnings");
 // Calculate distance between two geographic points using the Haversine formula
+const addRiderEarnings = async (riderId, fare) => {
+  try {
+    if (!riderId || !fare) {
+      console.error("❌ Missing earnings data.");
+      return;
+    }
+
+    // Fetch the rider
+    const rider = await Rider.findById(riderId);
+    if (!rider) {
+      console.error(`❌ Rider not found with ID: ${riderId}`);
+      return;
+    }
+
+    // Calculate earnings (5% of fare)
+    const useAmount = fare * 0.05;
+    const newEarning = new RiderEarnings({
+      riderId,
+      amount: useAmount,
+      header: "Ride Earnings",
+      status: "Completed",
+    });
+
+    // Save earnings
+    const savedEarning = await newEarning.save();
+
+    // Update total earnings for the rider
+    rider.totalEarnings += useAmount;
+    await rider.save();
+
+    console.log("💰 Earnings Added:", savedEarning);
+  } catch (error) {
+    console.error("❌ Error adding rider earnings:", error);
+  }
+};
+
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Radius of the Earth in kilometers
   const dLat = degToRad(lat2 - lat1); // Convert degrees to radians
@@ -238,6 +274,7 @@ const messagingSockets = (server) => {
         console.error("Error saving message to DB:", err);
       }
     });
+
     socket.on("sendMessageSupportRoom", (userId) => {
       console.log(`User ${userId} joining room`);
       // Join the room based on userId
@@ -492,7 +529,7 @@ const messagingSockets = (server) => {
         }
 
         console.log(
-          "RideSocket status updated successfully:",
+          "RideSocket status updated successfully:"
           // updatedRideSocket
         );
 
@@ -539,7 +576,7 @@ const messagingSockets = (server) => {
 
           await messageSupport.save();
           console.log(
-            "MessageSupport document created successfully:",
+            "MessageSupport document created successfully:"
             // messageSupport
           );
         } else {
@@ -564,8 +601,6 @@ const messagingSockets = (server) => {
         console.error("Error processing acceptRide event:", error.message);
       }
     });
-
-
 
     socket.on("startRide", async (payload) => {
       if (!payload) {
@@ -654,7 +689,7 @@ const messagingSockets = (server) => {
       const rideObject = ride?._id;
       // Validate payload
       if (!rideId || !driverId) {
-        console.error("Invalid data received for endRide event.", payload);
+        //console.error("Invalid data received for endRide event.", payload);
         return;
       }
 
@@ -666,7 +701,7 @@ const messagingSockets = (server) => {
           return;
         }
 
-        console.log("Rider Details:", rider);
+        //console.log("Rider Details:", rider);
 
         const rideSocket = await RideSocket.findOneAndDelete({ rideId });
 
@@ -675,7 +710,7 @@ const messagingSockets = (server) => {
           return;
         }
 
-        console.log("RideSocket entry removed successfully:", rideSocket);
+        //console.log("RideSocket entry removed successfully:", rideSocket);
 
         // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
@@ -688,26 +723,27 @@ const messagingSockets = (server) => {
         );
 
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideObject}`);
+          //console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
 
-        console.log("Ride updated successfully:", updatedRide);
+  
+        if (updatedRide) {
+          await addRiderEarnings(driverId, updatedRide?.totalPrice);
+        }
 
         // Emit event to notify all users in the ride room
         io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
           rider: rider,
           pairing: false,
-          startRide: true, // Indicate the ride had started
-          endRide: true, // Notify that the ride has ended
+          startRide: true,
+             endRide: true, // Notify that the ride has ended
           reportRide: false,
           acceptRide: true,
         });
 
-        console.log("End Ride Event Processed Successfully:", {
-          ride: updatedRide,
-        });
+  
       } catch (error) {
         console.error(
           `Error processing endRide event for ride ID: ${rideObject}`,
