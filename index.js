@@ -27,19 +27,9 @@ dotenv.config();
 // Initialize Express app
 const app = express();
 
-// Middleware setup
-app.use(
-  cors({
-    origin: [
-      "http://localhost:8088", // Local development (React or Expo web)
-      "http://localhost:8081", // Expo Go web preview
-      "exp://127.0.0.1:19000", // Expo app on mobile
-      "https://pickurps-server.onrender.com", // (⚠️ This is a backend domain, doesn't need to be in origin)
-      "https://server-9mir.onrender.com", // (⚠️ Also a backend domain, likely unnecessary here)
-    ],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: '*', // Replace '*' with frontend origin in production
+}));
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
