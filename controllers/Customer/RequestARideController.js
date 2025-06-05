@@ -7,6 +7,110 @@ const mongoose = require("mongoose");
 const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 
+// Helper function to calculate distance between two lat/lng points in km
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const toRad = (angle) => (angle * Math.PI) / 180;
+
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Controller to calculate total distance from pickup to multiple deliveries
+exports.calculateTotalDistance = async (req, res) => {
+  try {
+    const { pickupLat, pickupLng, deliveryPoints } = req.body;
+
+    if (
+      typeof pickupLat !== "number" ||
+      typeof pickupLng !== "number" ||
+      !Array.isArray(deliveryPoints)
+    ) {
+      return res.status(400).json({ message: "Invalid input" });
+    }
+
+    for (const point of deliveryPoints) {
+      if (typeof point.lat !== "number" || typeof point.lng !== "number") {
+        return res.status(400).json({
+          message: "Each delivery point must have numeric lat and lng",
+        });
+      }
+    }
+
+    // Calculate total distance
+    let totalDistance = 0;
+    for (const point of deliveryPoints) {
+      totalDistance += haversineDistance(
+        pickupLat,
+        pickupLng,
+        point.lat,
+        point.lng
+      );
+    }
+
+    // Base rate per km
+    const baseRatePerKm = 100;
+
+    // Calculate prices
+    const regularPriceBeforeDiscount = totalDistance * baseRatePerKm;
+    const regularDiscountPercent = 10;
+    const regularFinalPrice =
+      regularPriceBeforeDiscount * (1 - regularDiscountPercent / 100);
+
+    const impromptuPriceBeforeDiscount = totalDistance * baseRatePerKm * 2;
+    const impromptuDiscountPercent = 0;
+    const impromptuFinalPrice = impromptuPriceBeforeDiscount;
+
+    const choices = [
+      {
+        title: "Regular",
+        type: 'bike',
+        id: 'regular',
+        // priceBeforeDiscount: regularPriceBeforeDiscount,
+        // discountPercent: regularDiscountPercent,
+        // price: regularFinalPrice,
+
+        priceBeforeDiscount: 3500,
+        discountPercent: 15,
+        price: 2975,
+        off: 525,
+        description: "Standard delivery with 15% discount.",
+      },
+      {
+        id: 'premium',
+        title: "Impromptu",
+        type: 'bike',
+        //     priceBeforeDiscount: impromptuPriceBeforeDiscount,
+        // discountPercent: impromptuDiscountPercent,
+        // price: impromptuFinalPrice,
+
+        priceBeforeDiscount: 8000,
+        discountPercent: 5,
+        price: 7600,
+        off: 400,
+        description: "Urgent delivery with 5% discount.",
+      },
+    ];
+
+    return res.status(200).json({
+      totalDistanceInKm: totalDistance,
+      choices,
+      message: "Total distance and delivery options calculated successfully",
+      success: true,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message, success: false });
+  }
+};
+
 // Create a new Request a Ride
 exports.createRide = async (req, res) => {
   try {
@@ -417,7 +521,6 @@ exports.getRideSocketLogs = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 // Get all rides by riderId
 exports.getRidesByRiderId = async (req, res) => {

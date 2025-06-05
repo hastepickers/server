@@ -10,7 +10,7 @@ router.post("/create", rideController.createRide);
 
 // Update ride status (start, cancel, end, etc.)
 router.patch("/:id/update-status", rideController.updateRideStatus);
-
+router.post('/calculate-total-distance-price', rideController.calculateTotalDistance)
 // Get all rides by customerId
 router.get("/customer/rides", rideController.getRidesByCustomerId);
 router.get("/customer/ongoing", rideController.getRidesOngoingForCustomer);
