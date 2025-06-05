@@ -27,9 +27,14 @@ dotenv.config();
 // Initialize Express app
 const app = express();
 
-app.use(cors({
-  origin: '*', // Replace '*' with frontend origin in production
-}));
+// Middleware setup
+app.use(cors());
+
+
+// app.use(cors({
+//   origin: '*', // Replace '*' with frontend origin in production
+// }));
+
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
