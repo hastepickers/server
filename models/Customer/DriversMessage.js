@@ -5,6 +5,7 @@ const messageSchema = new mongoose.Schema({
   sender: { type: String, required: false },
   status: { type: String, required: false },
   timestamp: { type: Date, default: Date.now },
+  user: { type: String, required: false },
   uuid: { type: String, required: false }, // Added UUID field
 });
 

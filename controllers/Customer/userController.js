@@ -4,6 +4,10 @@ const otpGenerator = require("otp-generator");
 const mongoose = require("mongoose");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
 // Get user profile data excluding password
+function capitalize(str) {
+  if (!str) return "";
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
 
 const generateOtp = (length) => {
   let otp = "";
@@ -11,6 +15,168 @@ const generateOtp = (length) => {
     otp += Math.floor(Math.random() * 10); // Generate a random digit between 0 and 9
   }
   return otp;
+};
+
+exports.getUserReceivingRidesDetails = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const user = await User.findById(userId).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const receivingItems = user.receivingItems || [];
+
+    const ridesWithFilteredDropoffs = await Promise.all(
+      receivingItems.map(async (item) => {
+        try {
+          const ride = await RequestARide.findById(item.rideId).lean();
+
+          if (!ride) return null;
+
+          // Filter delivery dropoffs where receiverUserId matches current user
+          const filteredDropoffs = (ride.deliveryDropoff || []).filter(
+            (drop) =>
+              drop.receiverUserId &&
+              drop.receiverUserId.toString() === userId.toString()
+          );
+
+          return {
+            rideId: item.rideId,
+            receivedAt: item.receivedAt,
+            pickup: item.pickup,
+            rideDetails: {
+              ...ride,
+              deliveryDropoff: filteredDropoffs,
+            },
+          };
+        } catch (error) {
+          console.error(`❌ Error fetching ride ${item.rideId}:`, error);
+          return null;
+        }
+      })
+    );
+
+    const validRides = ridesWithFilteredDropoffs.filter((r) => r !== null);
+
+    return res.status(200).json({
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        email: user.email,
+        imageUrl: user.imageUrl,
+      },
+      receivingRides: validRides,
+    });
+  } catch (err) {
+    console.error("❌ Error in getUserReceivingRidesDetails:", err);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
+
+exports.checkPhoneNumberAgainstUser = async (req, res) => {
+  let { phoneNumber } = req.body;
+  const userId = req.user.id;
+
+  console.log("📥 Incoming phone number:", phoneNumber);
+  console.log("👤 Requesting user ID:", userId);
+
+  if (!phoneNumber) {
+    console.log("❌ No phone number provided");
+    return res.status(400).json({ message: "Phone number is required" });
+  }
+
+  phoneNumber = phoneNumber.trim();
+  console.log("✂️ Trimmed phone number:", phoneNumber);
+
+  if (phoneNumber.startsWith("+234")) {
+    phoneNumber = phoneNumber.slice(4);
+    console.log("🔁 Removed +234 prefix:", phoneNumber);
+  } else if (phoneNumber.startsWith("234")) {
+    phoneNumber = phoneNumber.slice(3);
+    console.log("🔁 Removed 234 prefix:", phoneNumber);
+  } else if (phoneNumber.startsWith("0")) {
+    phoneNumber = phoneNumber.slice(1);
+    console.log("🔁 Removed 0 prefix:", phoneNumber);
+  }
+
+  try {
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      console.log("❌ Current user not found");
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const currentUserNormalizedPhone = currentUser.phoneNumber
+      .trim()
+      .replace(/^\+234/, "")
+      .replace(/^234/, "")
+      .replace(/^0/, "");
+
+    console.log(
+      "📲 Normalized current user phone:",
+      currentUserNormalizedPhone
+    );
+
+    if (currentUserNormalizedPhone === phoneNumber) {
+      console.log("⚠️ Phone number matches current user");
+
+      return res.status(200).json({
+        message:
+          "Provided phone number is the same as the current user's phone number",
+        isSame: true,
+        currentUser: true,
+        user: {
+          firstName: capitalize(currentUser.firstName),
+          lastName: capitalize(currentUser.lastName),
+          phoneNumber: currentUser.phoneNumber,
+          _id: currentUser._id,
+        },
+      });
+    }
+
+    const matchedUser = await User.findOne({
+      phoneNumber: { $regex: new RegExp(`${phoneNumber}$`) },
+    });
+
+    if (!matchedUser) {
+      console.log("🔍 No matching user found for phone:", phoneNumber);
+      return res.status(404).json({
+        message: "No user found with the provided phone number",
+        exists: false,
+      });
+    }
+
+    console.log("✅ Found matching user:", {
+      firstName: matchedUser.firstName,
+      lastName: matchedUser.lastName,
+      phoneNumber: matchedUser.phoneNumber,
+    });
+
+    return res.status(200).json({
+      message: "User found with this phone number",
+      exists: true,
+      user: {
+        firstName: capitalize(currentUser.firstName),
+        lastName: capitalize(currentUser.lastName),
+        phoneNumber: currentUser.phoneNumber,
+        _id: currentUser._id,
+      },
+    });
+  } catch (error) {
+    console.log("💥 Internal error occurred:", error);
+    return res.status(500).json({
+      message: "Internal server error while checking phone number",
+      error,
+    });
+  }
 };
 
 exports.getUserProfile = async (req, res) => {
@@ -337,6 +503,7 @@ exports.updateNotificationPreferences = async (req, res) => {
     smsNotifications,
     newsletterSubscription,
     promotionNotifications,
+    pickupCode,
   } = req.body;
   const userId = req.user.id; // Get user ID from JWT
 
@@ -345,10 +512,10 @@ exports.updateNotificationPreferences = async (req, res) => {
     emailNotifications,
     smsNotifications,
     newsletterSubscription,
-    promotionNotifications
+    promotionNotifications,
+    pickupCode
   );
   try {
-    // Update user notification preferences
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       {
@@ -357,6 +524,7 @@ exports.updateNotificationPreferences = async (req, res) => {
         promotionNotifications,
         smsNotifications,
         emailNotifications,
+        pickupCode,
       },
       { new: true, select: "-password" } // Exclude password from the response
     );

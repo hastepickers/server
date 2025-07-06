@@ -7,6 +7,7 @@ const { default: mongoose } = require("mongoose");
 const Rider = require("../../models/Rider/RiderSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 const RiderEarnings = require("../../models/Rider/RiderEarnings");
+const User = require("../../models/Customer/User");
 // Calculate distance between two geographic points using the Haversine formula
 const addRiderEarnings = async (riderId, fare) => {
   try {
@@ -124,53 +125,61 @@ const messagingSockets = (server) => {
       users[socket.id] = room;
       console.log(`User ${socket.id} joined room ${room}`);
 
-      // Notify others in the room that a new user joined
       socket.to(room).emit("new-user", socket.id);
     });
 
-    // Start a group call, notify all users in the room
-    socket.on("start-call", () => {
-      const room = users[socket.id];
-      if (!room) return;
+    const userId = socket.handshake.query.userId;
 
-      console.log(`User ${socket.id} started a call in room ${room}`);
+    if (!userId) {
+      socket.disconnect();
+      return;
+    }
 
-      // Notify all users in the room about an incoming call
-      socket.to(room).emit("incoming-call", { from: socket.id });
+    console.log(`User connected: ${userId}`);
+    users[userId] = socket.id;
+
+    // Forward signaling events
+    socket.on("call", (data) => {
+      const recipientSocket = io.sockets.sockets.get(users[data.to]);
+      if (recipientSocket) {
+        recipientSocket.emit("incoming_call", {
+          from: userId,
+          offer: data.offer,
+        });
+      }
     });
 
-    // Accept call - User confirms they are available
-    socket.on("accept-call", ({ to }) => {
-      console.log(`User ${socket.id} accepted call from ${to}`);
-      io.to(to).emit("call-accepted", { from: socket.id });
+    socket.on("answer", (data) => {
+      const recipientSocket = io.sockets.sockets.get(users[data.to]);
+      if (recipientSocket) {
+        recipientSocket.emit("answer", data.answer);
+      }
     });
 
-    // Decline call
-    socket.on("decline-call", ({ to }) => {
-      console.log(`User ${socket.id} declined call from ${to}`);
-      io.to(to).emit("call-declined", { from: socket.id });
+    socket.on("candidate", (data) => {
+      const recipientSocket = io.sockets.sockets.get(users[data.to]);
+      if (recipientSocket) {
+        recipientSocket.emit("candidate", data.candidate);
+      }
     });
 
-    // Send WebRTC offer to all users in the room (except sender)
-    socket.on("offer", ({ offer }) => {
-      const room = users[socket.id];
-      if (!room) return;
-
-      console.log(`User ${socket.id} is sending an offer to room ${room}`);
-
-      socket.to(room).emit("offer", { from: socket.id, offer });
+    socket.on("call_rejected", (data) => {
+      const recipientSocket = io.sockets.sockets.get(users[data.to]);
+      if (recipientSocket) {
+        recipientSocket.emit("call_rejected");
+      }
     });
 
-    // Send answer to the offer
-    socket.on("answer", ({ to, answer }) => {
-      console.log(`User ${socket.id} sent an answer to ${to}`);
-      io.to(to).emit("answer", { from: socket.id, answer });
+    socket.on("end_call", (data) => {
+      const recipientSocket = io.sockets.sockets.get(users[data.to]);
+      if (recipientSocket) {
+        recipientSocket.emit("call_ended");
+      }
     });
 
-    // Forward ICE candidate to the correct peer
-    socket.on("ice-candidate", ({ to, candidate }) => {
-      console.log(`User ${socket.id} sent ICE candidate to ${to}`);
-      io.to(to).emit("ice-candidate", { from: socket.id, candidate });
+    socket.on("disconnect", () => {
+      console.log(`User disconnected: ${userId}`);
+      delete users[userId];
     });
 
     socket.on("disconnect", () => {
@@ -182,33 +191,6 @@ const messagingSockets = (server) => {
       console.log("User disconnected:", socket.id);
     });
 
-    // socket.on("offer", (data) => {
-    //   console.log("Offer received from:", socket.id);
-    //   socket.to(data.to).emit("offer", {
-    //     from: data.to,
-    //     offer: data.offer,
-    //   });
-    // });
-
-    // // Relay answer to the target peer
-    // socket.on("answer", (data) => {
-    //   console.log("Answer received from:", data.to);
-    //   socket.to(data.to).emit("answer", {
-    //     from: data.to,
-    //     answer: data.answer,
-    //   });
-    // });
-
-    // // Relay ICE candidates to the target peer
-    // socket.on("ice-candidate", (data) => {
-    //   console.log("ICE candidate received from:", data.to);
-    //   socket.to(data.to).emit("ice-candidate", {
-    //     from: data.to,
-    //     candidate: data.candidate,
-    //   });
-    // });
-
-    // Join a specific group/room
     socket.on("join_group_ride_message", async (groupId) => {
       console.log(`User ${groupId} joined group: ${groupId}`);
       socket.join(groupId);
@@ -235,17 +217,17 @@ const messagingSockets = (server) => {
     socket.on("send_message_ride_message", async (data) => {
       console.log("Received data:", data); // Debug the incoming data
 
-      const { groupId, message, sender, uuid } = data;
+      const { groupId, message, sender, uuid, user } = data;
 
-      console.log(groupId, message, sender, uuid, "communication"); // Log the extracted values
+      console.log(groupId, message, sender, uuid, user, "communication"); // Log the extracted values
 
       try {
         // Find the group in the database
         const group = await DriversMessage.findOne({ groupId: groupId });
 
         if (group) {
-          // Add the new message to the group's message list
           group.messages.push({
+            user: user,
             message: message,
             sender: sender,
             status: "delivered",
@@ -253,7 +235,6 @@ const messagingSockets = (server) => {
             uuid: uuid, // Save the UUID along with the message
           });
 
-          // Save the updated group document
           await group.save();
           console.log(`Message from ${sender} saved to group ${groupId}`);
 
@@ -263,6 +244,7 @@ const messagingSockets = (server) => {
             message: message,
             uuid: uuid, // Emit the UUID back to the group
             timestamp: new Date().toISOString(),
+            user: user,
             status: "delivered", // Use ISO format for consistency
           });
         } else {
@@ -475,7 +457,7 @@ const messagingSockets = (server) => {
       io.to(groupId).emit("receiveMessage", messageData);
     });
 
-    socket.on("acceptRide", async (payload) => {
+    socket.on("acceptRides", async (payload) => {
       if (!payload) {
         console.error("No data received for acceptRide event.");
         return;
@@ -601,7 +583,136 @@ const messagingSockets = (server) => {
         console.error("Error processing acceptRide event:", error.message);
       }
     });
+    socket.on("acceptRide", async (payload) => {
+      if (!payload) {
+        console.error("No data received for acceptRide event.");
+        return;
+      }
 
+      const { rideId, driverId } = payload;
+
+      if (!rideId || !driverId) {
+        console.error("Invalid data received for acceptRide event:", payload);
+        return;
+      }
+
+      try {
+        if (!mongoose.Types.ObjectId.isValid(driverId)) {
+          console.error(`Invalid ObjectId: ${driverId}`);
+          return;
+        }
+
+        const rider = await Rider.findById(driverId);
+        if (!rider) {
+          console.error(`No rider found with ID: ${driverId}`);
+          return;
+        }
+
+        const updatedRideSocket = await RideSocket.findOneAndUpdate(
+          { rideId },
+          { status: "accepted" },
+          { new: true }
+        );
+
+        if (!updatedRideSocket) {
+          console.error(`No RideSocket entry found for rideId: ${rideId}`);
+          return;
+        }
+
+        const updatedRide = await RequestARide.findByIdAndUpdate(
+          rideId,
+          {
+            acceptRide: true,
+            rider: {
+              userId: rider._id,
+              firstName: rider.firstName,
+              lastName: rider.lastName,
+              plateNumber: rider.plateNumber,
+              imageUrl: rider.imageUrl,
+              phoneNumber: rider.phoneNumber,
+              driverRating: rider.driverRating,
+              riderLocation: rider.riderLocation,
+              vehicleType: rider.vehicleType,
+              vehicleName: rider.vehicleName,
+              vehicleColor: rider.vehicleColor,
+            },
+          },
+          { new: true }
+        );
+
+        if (!updatedRide) {
+          console.error(`No ride found with ID: ${rideId}`);
+          return;
+        }
+
+        const customerUser = await User.findById(
+          updatedRide.customer.customerId
+        );
+        if (customerUser && updatedRide.deliveryDropoff?.length > 0) {
+          const latestDrop = updatedRide.deliveryDropoff[0];
+          customerUser.addRecentDeliveryLocation({
+            address: latestDrop.deliveryAddress,
+            latitude: latestDrop.deliveryLatitude,
+            longitude: latestDrop.deliveryLongitude,
+          });
+
+          await customerUser.save();
+          console.log("✅ Customer's recent delivery location updated");
+        }
+
+        const deliveryList = updatedRide.deliveryDropoff || [];
+        for (const delivery of deliveryList) {
+          if (
+            delivery.receiverUserId &&
+            delivery.deliveryAddress &&
+            delivery.deliveryLatitude != null &&
+            delivery.deliveryLongitude != null
+          ) {
+            const receiverUser = await User.findById(delivery.receiverUserId);
+            if (receiverUser) {
+              receiverUser.addReceivingItem(rideId, {
+                address: updatedRide.pickup.pickupAddress,
+                latitude: updatedRide.pickup.pickupLatitude,
+                longitude: updatedRide.pickup.pickupLongitude,
+              });
+
+              await receiverUser.save();
+              console.log(
+                `✅ Receiver (${receiverUser._id}) receivingItems updated`
+              );
+            }
+          }
+        }
+
+        const existingMessageSupport = await MessageSupport.findOne({ rideId });
+        if (!existingMessageSupport) {
+          const messageSupport = new MessageSupport({
+            rideId,
+            userId: rider._id,
+            messages: [],
+          });
+
+          await messageSupport.save();
+          console.log("✅ MessageSupport document created");
+        } else {
+          console.log("ℹ️ MessageSupport document already exists");
+        }
+
+        io.to(rideId).emit("rideBooked", {
+          ride: updatedRide,
+          rider: rider,
+          pairing: false,
+          acceptRide: true,
+          startRide: false,
+          endRide: false,
+          reportRide: false,
+        });
+
+        console.log("✅ acceptRide event completed");
+      } catch (error) {
+        console.error("❌ Error handling acceptRide event:", error.message);
+      }
+    });
     socket.on("startRide", async (payload) => {
       if (!payload) {
         console.error("No data received for startRide event.");
@@ -687,139 +798,99 @@ const messagingSockets = (server) => {
 
       const { rideId, driverId, ride } = payload;
       const rideObject = ride?._id;
-      // Validate payload
-      if (!rideId || !driverId) {
-        //console.error("Invalid data received for endRide event.", payload);
-        return;
-      }
+
+      if (!rideId || !driverId) return;
 
       try {
-        // Fetch the rider from the database
         const rider = await Rider.findById(driverId);
-        if (!rider) {
-          console.error(`No rider found with ID: ${driverId}`);
-          return;
-        }
+        if (!rider) return;
 
-        //console.log("Rider Details:", rider);
+        await RideSocket.findOneAndDelete({ rideId });
 
-        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
-
-        if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
-          return;
-        }
-
-        //console.log("RideSocket entry removed successfully:", rideSocket);
-
-        // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideObject,
           {
-            "endRide.isEnded": true, // Set endRide to true
-            "endRide.timestamp": new Date(), // Set the current timestamp
+            "endRide.isEnded": true,
+            "endRide.timestamp": new Date(),
           },
-          { new: true } // Return the updated document
+          { new: true }
         );
 
-        if (!updatedRide) {
-          //console.error(`No ride found with ID: ${rideObject}`);
-          return;
-        }
-
-  
         if (updatedRide) {
           await addRiderEarnings(driverId, updatedRide?.totalPrice);
+
+          // ✅ Remove from receivingItems
+          if (updatedRide.receiverUserId) {
+            const receiverUser = await User.findById(
+              updatedRide.receiverUserId
+            );
+            if (receiverUser) {
+              receiverUser.removeReceivingItem(rideId);
+              await receiverUser.save();
+              console.log("✅ Removed ride from receiver's receivingItems");
+            }
+          }
         }
 
-        // Emit event to notify all users in the ride room
         io.to(rideObject).emit("rideBooked", {
           ride: updatedRide,
-          rider: rider,
+          rider,
           pairing: false,
           startRide: true,
-             endRide: true, // Notify that the ride has ended
+          endRide: true,
           reportRide: false,
           acceptRide: true,
         });
-
-  
       } catch (error) {
         console.error(
-          `Error processing endRide event for ride ID: ${rideObject}`,
+          `Error processing endRide for ride ID: ${rideObject}`,
           error
         );
       }
     });
 
     socket.on("cancelRide", async (payload) => {
-      if (!payload) {
-        console.error("No data received for cancelRide event.");
-        return;
-      }
+      if (!payload) return;
 
       const { rideId, driverId } = payload;
-      console.log(rideId, "payloadpayloadpayloadpayload");
-      // Validate payload
-      if (!rideId) {
-        console.error("Invalid data received for cancelRide event.", payload);
-        return;
-      }
+      if (!rideId) return;
 
       try {
-        // Fetch the rider from the database
-        // const rider = await Rider.findById(driverId);
-        // if (!rider) {
-        //   console.error(`No rider found with ID: ${driverId}`);
-        //   return;
-        // }
-
-        // console.log("Rider Details:", rider);
-
-        // Update the ride with cancelRide status
-        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
-
-        if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
-          return;
-        }
-
-        console.log("RideSocket entry removed successfully:", rideSocket);
+        await RideSocket.findOneAndDelete({ rideId });
 
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
           {
-            "cancelRide.isCancelled": true, // Set cancelRide to true
-            "cancelRide.timestamp": new Date(), // Set the current timestamp
+            "cancelRide.isCancelled": true,
+            "cancelRide.timestamp": new Date(),
           },
-          { new: true } // Return the updated document
+          { new: true }
         );
 
-        if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
-          return;
+        // ✅ Remove from receivingItems
+        if (updatedRide?.receiverUserId) {
+          const receiverUser = await User.findById(updatedRide.receiverUserId);
+          if (receiverUser) {
+            receiverUser.removeReceivingItem(rideId);
+            await receiverUser.save();
+            console.log("✅ Removed ride from receiver's receivingItems");
+          }
         }
 
-        console.log("Ride cancellation processed successfully:", updatedRide);
-
-        // Emit event to notify all users in the ride room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
-          //closestRider: rider,
           pairing: false,
-          startRide: false, // Indicate the ride has not started
-          endRide: false, // Notify that the ride has not ended
+          startRide: false,
+          endRide: false,
           reportRide: false,
           acceptRide: false,
-          cancelRide: true, // Notify users about the cancellation
+          cancelRide: true,
         });
 
-        console.log("Cancel Ride Event Processed Successfully:", {
-          ride: updatedRide,
-        });
+        console.log("✅ Cancel Ride Event Processed");
       } catch (error) {
         console.error(
-          `Error processing cancelRide event for ride ID: ${rideId}`,
+          `Error processing cancelRide for ride ID: ${rideId}`,
           error
         );
       }

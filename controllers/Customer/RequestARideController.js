@@ -25,25 +25,45 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 }
 
 // Controller to calculate total distance from pickup to multiple deliveries
+// Controller to calculate total distance from pickup to multiple deliveries
 exports.calculateTotalDistance = async (req, res) => {
   try {
-    const { pickupLat, pickupLng, deliveryPoints } = req.body;
+    let { pickupLat, pickupLng, deliveryPoints } = req.body;
+
+    console.log("Raw Input:", { pickupLat, pickupLng, deliveryPoints });
+
+    // Ensure pickup coordinates are numbers
+    pickupLat =
+      typeof pickupLat === "string" ? parseFloat(pickupLat) : pickupLat;
+    pickupLng =
+      typeof pickupLng === "string" ? parseFloat(pickupLng) : pickupLng;
 
     if (
       typeof pickupLat !== "number" ||
       typeof pickupLng !== "number" ||
       !Array.isArray(deliveryPoints)
     ) {
-      return res.status(400).json({ message: "Invalid input" });
+      return res.status(400).json({ message: "Invalid input", success: false });
     }
 
-    for (const point of deliveryPoints) {
-      if (typeof point.lat !== "number" || typeof point.lng !== "number") {
-        return res.status(400).json({
-          message: "Each delivery point must have numeric lat and lng",
-        });
+    // Normalize delivery points
+    deliveryPoints = deliveryPoints.map((point, index) => {
+      // Use lat/lng or fallback to deliveryLatitude/Longitude
+      let lat = point.lat ?? point.deliveryLatitude;
+      let lng = point.lng ?? point.deliveryLongitude;
+
+      // Convert to numbers if they're strings
+      lat = typeof lat === "string" ? parseFloat(lat) : lat;
+      lng = typeof lng === "string" ? parseFloat(lng) : lng;
+
+      console.log(`Delivery Point ${index + 1}:`, { lat, lng });
+
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        throw new Error(`Invalid lat/lng at delivery point ${index + 1}`);
       }
-    }
+
+      return { lat, lng };
+    });
 
     // Calculate total distance
     let totalDistance = 0;
@@ -56,10 +76,9 @@ exports.calculateTotalDistance = async (req, res) => {
       );
     }
 
-    // Base rate per km
+    // Pricing logic
     const baseRatePerKm = 100;
 
-    // Calculate prices
     const regularPriceBeforeDiscount = totalDistance * baseRatePerKm;
     const regularDiscountPercent = 10;
     const regularFinalPrice =
@@ -69,15 +88,12 @@ exports.calculateTotalDistance = async (req, res) => {
     const impromptuDiscountPercent = 0;
     const impromptuFinalPrice = impromptuPriceBeforeDiscount;
 
+    // Return hardcoded example pricing
     const choices = [
       {
+        id: "regular",
         title: "Regular",
-        type: 'bike',
-        id: 'regular',
-        // priceBeforeDiscount: regularPriceBeforeDiscount,
-        // discountPercent: regularDiscountPercent,
-        // price: regularFinalPrice,
-
+        type: "bike",
         priceBeforeDiscount: 3500,
         discountPercent: 15,
         price: 2975,
@@ -85,13 +101,9 @@ exports.calculateTotalDistance = async (req, res) => {
         description: "Standard delivery with 15% discount.",
       },
       {
-        id: 'premium',
+        id: "premium",
         title: "Impromptu",
-        type: 'bike',
-        //     priceBeforeDiscount: impromptuPriceBeforeDiscount,
-        // discountPercent: impromptuDiscountPercent,
-        // price: impromptuFinalPrice,
-
+        type: "bike",
         priceBeforeDiscount: 8000,
         discountPercent: 5,
         price: 7600,
@@ -107,10 +119,10 @@ exports.calculateTotalDistance = async (req, res) => {
       success: true,
     });
   } catch (error) {
+    console.error("Error in calculateTotalDistance:", error);
     return res.status(500).json({ message: error.message, success: false });
   }
 };
-
 // Create a new Request a Ride
 exports.createRide = async (req, res) => {
   try {
@@ -291,6 +303,8 @@ exports.bookARide = async (req, res) => {
       .json({ message: "Error booking ride request", error: error.message });
   }
 };
+
+
 
 exports.acceptRide = async (req, res) => {
   try {
@@ -473,7 +487,9 @@ exports.getRidesByCustomerId = async (req, res) => {
     // Make sure customerId is a valid ObjectId
     const rides = await RequestARide.find({
       "customer.customerId": new mongoose.Types.ObjectId(customerId), // Use `new` to instantiate ObjectId
-    }).select("pickup endRide cancelRide startRide totalPrice _id createdAt"); // Select only the necessary fields
+    }).select(
+      "pickup endRide cancelRide startRide totalPrice _id createdAt deliveryDropoff"
+    ); // Select only the necessary fields
 
     if (!rides || rides.length === 0) {
       return res
