@@ -8,7 +8,9 @@ const {
   requestOtpForPhoneNumber,
   verifyUser,
   getUserByPhoneNumber,
-  healthCheck
+  healthCheck,
+  checkPhoneNumberAgainstUser,
+  getUserReceivingRidesDetails
 } = require("../../controllers/Customer/userController");
 
 const router = express.Router();
@@ -25,8 +27,12 @@ router.post("/phone-update-request", updatePhoneNumberRequest);
 router.post("/send-otp", requestOtpForPhoneNumber);
 router.post("/verify-otp", verifyUser);
 
-// Verify phone number change
+// Verify phone number change checkPhoneNumberAgainstUser
+router.post("/check-phone-number-against-user", checkPhoneNumberAgainstUser);
 router.post("/phone-update-verify", verifyPhoneNumberChange);
 router.put("/preferences", updateNotificationPreferences);
 
+router.get("/get-user-receiving-rides-details", getUserReceivingRidesDetails);
+
+//getUserReceivingRidesDetails
 module.exports = router;

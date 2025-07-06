@@ -75,7 +75,7 @@ app.use("/api/v1/auth/company", company);
 // Initialize Socket.IO messaging functionality
 messagingSockets(server); // Set up messaging for Socket.IO
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4001;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
