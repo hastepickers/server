@@ -120,14 +120,6 @@ const messagingSockets = (server) => {
   io.on("connection", (socket) => {
     console.log(`User connecteds: ${socket.id}`);
 
-    socket.on("join", (room) => {
-      socket.join(room);
-      users[socket.id] = room;
-      console.log(`User ${socket.id} joined room ${room}`);
-
-      socket.to(room).emit("new-user", socket.id);
-    });
-
     const userId = socket.handshake.query.userId;
 
     if (!userId) {
@@ -138,57 +130,69 @@ const messagingSockets = (server) => {
     console.log(`User connected: ${userId}`);
     users[userId] = socket.id;
 
-    // Forward signaling events
+    // Handle user disconnection
+    socket.on("disconnect", () => {
+      console.log(`User disconnected: ${userId}`);
+      delete users[userId];
+
+      // Notify all users that this user disconnected
+      socket.broadcast.emit("user_disconnected", userId);
+    });
+
+    // Handle call initiation
     socket.on("call", (data) => {
-      const recipientSocket = io.sockets.sockets.get(users[data.to]);
-      if (recipientSocket) {
-        recipientSocket.emit("incoming_call", {
+      const recipientSocketId = users[data.to];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("incoming_call", {
           from: userId,
           offer: data.offer,
+        });
+      } else {
+        socket.emit("call_rejected", {
+          message: "User not available",
         });
       }
     });
 
+    // Handle call answer
     socket.on("answer", (data) => {
-      const recipientSocket = io.sockets.sockets.get(users[data.to]);
-      if (recipientSocket) {
-        recipientSocket.emit("answer", data.answer);
+      const recipientSocketId = users[data.to];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("answer", data.answer);
       }
     });
 
+    // Handle ICE candidates
     socket.on("candidate", (data) => {
-      const recipientSocket = io.sockets.sockets.get(users[data.to]);
-      if (recipientSocket) {
-        recipientSocket.emit("candidate", data.candidate);
+      const recipientSocketId = users[data.to];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("candidate", data.candidate);
       }
     });
 
+    // Handle call rejection
     socket.on("call_rejected", (data) => {
-      const recipientSocket = io.sockets.sockets.get(users[data.to]);
-      if (recipientSocket) {
-        recipientSocket.emit("call_rejected");
+      const recipientSocketId = users[data.to];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("call_rejected");
       }
     });
 
+    // Handle call termination
     socket.on("end_call", (data) => {
-      const recipientSocket = io.sockets.sockets.get(users[data.to]);
-      if (recipientSocket) {
-        recipientSocket.emit("call_ended");
+      const recipientSocketId = users[data.to];
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("call_ended");
       }
     });
 
-    socket.on("disconnect", () => {
-      console.log(`User disconnected: ${userId}`);
-      delete users[userId];
-    });
+    socket.on("join", (room) => {
+      socket.join(room);
+      users[socket.id] = room;
+      console.log(`User ${socket.id} joined room ${room}`);
 
-    socket.on("disconnect", () => {
-      const room = users[socket.id];
-      if (room) {
-        socket.to(room).emit("user-disconnected", socket.id);
-        delete users[socket.id];
-      }
-      console.log("User disconnected:", socket.id);
+      // Notify others in the room that a new user joined
+      socket.to(room).emit("new-user", socket.id);
     });
 
     socket.on("join_group_ride_message", async (groupId) => {
