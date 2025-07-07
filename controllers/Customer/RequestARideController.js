@@ -6,6 +6,7 @@ const Rider = require("../../models/Rider/RiderSchema");
 const mongoose = require("mongoose");
 const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
+//const { Types } = mongoose
 
 // Helper function to calculate distance between two lat/lng points in km
 function haversineDistance(lat1, lng1, lat2, lng2) {
@@ -228,55 +229,73 @@ exports.cancelRideById = async (req, res) => {
 
 exports.bookARide = async (req, res) => {
   try {
-    // Get user ID from the request (provided by authentication middleware)
     const userId = req.user.id;
 
-    // Find the customer in the database
+    // 1. Get customer from DB
     const customer = await User.findById(userId).select(
-      "firstName lastName phoneNumber imageUrl email"
+      'firstName lastName phoneNumber imageUrl email'
     );
+
     if (!customer) {
-      return res.status(404).json({ message: "Customer not found." });
+      return res.status(404).json({ message: 'Customer not found.' });
     }
 
-    // Extract ride details from the request body
+    // 2. Extract ride details from body
     const { deliveryDropoff, pickup, typeOfVehicle, totalPrice } = req.body;
 
-    // Validate required fields
-    if (
-      !deliveryDropoff ||
-      !Array.isArray(deliveryDropoff) ||
-      deliveryDropoff.length === 0
-    ) {
-      return res
-        .status(400)
-        .json({ message: "At least one delivery drop-off point is required." });
+    // 3. Validate deliveryDropoff array exists
+    if (!Array.isArray(deliveryDropoff) || deliveryDropoff.length === 0) {
+      return res.status(400).json({
+        message: 'At least one delivery drop-off point is required.',
+      });
     }
+
+    // 4. Clean & normalize delivery dropoffs
+    const cleanedDropoffs = deliveryDropoff.map((drop, index) => {
+      if (
+        !drop.deliveryLatitude ||
+        !drop.deliveryLongitude ||
+        !drop.deliveryAddress ||
+        !drop.receiverName ||
+        !drop.receiverPhoneNumber
+      ) {
+        throw new Error(
+          `Delivery drop-off ${index + 1} is missing required fields.`
+        );
+      }
+
+      return {
+        deliveryLatitude: drop.deliveryLatitude,
+        deliveryLongitude: drop.deliveryLongitude,
+        deliveryAddress: drop.deliveryAddress,
+        receiverName: drop.receiverName,
+        receiverPhoneNumber: drop.receiverPhoneNumber,
+        receiverUserId:
+          drop.receiverUserId && drop.receiverUserId !== ''
+            ? drop.receiverUserId
+            : undefined,
+        items: drop.items || [],
+      };
+    });
+
+    // 5. Validate pickup details
     if (
       !pickup ||
       !pickup.pickupLatitude ||
       !pickup.pickupLongitude ||
       !pickup.pickupAddress
     ) {
-      return res
-        .status(400)
-        .json({ message: "Pickup location details are required." });
+      return res.status(400).json({
+        message: 'Pickup location details are required.',
+      });
     }
 
-    // Calculate total and discounted price
-    // const totalPrice = deliveryDropoff.reduce(
-    //   (acc, dropoff) => acc + (dropoff.price || 0),
-    //   0
-    // );
-    // const discountedPrice =
-    //   deliveryDropoff.length > 1 ? totalPrice * 0.9 : totalPrice;
-
-    // Create the new ride request
+    // 6. Create new ride
     const newRideRequest = new RequestARide({
-      deliveryDropoff,
+      deliveryDropoff: cleanedDropoffs,
       pickup,
-      //arrivalTime,
       typeOfVehicle,
+      totalPrice,
       customer: {
         customerId: customer._id,
         firstName: customer.firstName,
@@ -285,26 +304,23 @@ exports.bookARide = async (req, res) => {
         imageUrl: customer.imageUrl,
         email: customer.email,
       },
-      totalPrice: totalPrice,
     });
 
-    // Save to the database
     await newRideRequest.save();
 
-    res.status(201).json({
-      message: "Ride request booked successfully",
+    return res.status(201).json({
+      message: 'Ride request booked successfully',
       rideRequest: newRideRequest,
       success: true,
     });
   } catch (error) {
-    console.error("Error booking ride request:", error);
-    res
-      .status(500)
-      .json({ message: "Error booking ride request", error: error.message });
+    console.error('❌ Error booking ride request:', error);
+    return res.status(500).json({
+      message: 'Error booking ride request',
+      error: error.message,
+    });
   }
 };
-
-
 
 exports.acceptRide = async (req, res) => {
   try {
