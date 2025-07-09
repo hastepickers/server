@@ -411,13 +411,47 @@ exports.getRideById = async (req, res) => {
     if (!ride) {
       return res.status(404).json({ message: "Ride not found" });
     }
-    console.log(ride, "riderideride");
+
+    // Helper function to format Nigerian phone numbers
+    const formatPhone = (phone) => {
+      if (!phone) return null;
+      const trimmed = phone.toString().trim();
+      if (trimmed.startsWith("0")) return trimmed;
+      if (trimmed.startsWith("+234")) return trimmed;
+      return `+234${trimmed}`;
+    };
+
+    // Format customer phone
+    if (ride.customer && ride.customer.phoneNumber) {
+      ride.customer.phoneNumber = formatPhone(ride.customer.phoneNumber);
+    }
+
+    // Format rider phone
+    if (ride.rider && ride.rider.phoneNumber) {
+      ride.rider.phoneNumber = formatPhone(ride.rider.phoneNumber);
+    }
+
+    // Format all deliveryDropoff receiver phone numbers
+    if (Array.isArray(ride.deliveryDropoff)) {
+      ride.deliveryDropoff = ride.deliveryDropoff.map((drop) => {
+        if (drop.receiverPhoneNumber) {
+          drop.receiverPhoneNumber = formatPhone(drop.receiverPhoneNumber);
+        }
+        return drop;
+      });
+    }
+
+    console.log(ride, "📦 Fetched ride with formatted phone numbers");
+
     res.status(200).json(ride);
   } catch (error) {
-    res.status(500).json({ message: "Erroiir fetching rides details", error });
+    console.error("❌ Error fetching ride:", error);
+    res.status(500).json({
+      message: "Error fetching ride details",
+      error: error.message,
+    });
   }
 };
-
 // Update the ride status (start, cancel, end)
 exports.updateRideStatus = async (req, res) => {
   try {
