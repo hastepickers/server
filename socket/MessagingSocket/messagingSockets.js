@@ -231,21 +231,20 @@ const messagingSockets = (server) => {
       }
     });
 
-    // Handling incoming messages and saving them to the database
     socket.on("send_message_ride_message", async (data) => {
       console.log("Received data:", data); // Debug the incoming data
 
-      const { groupId, message, sender, uuid } = data;
+      const { groupId, message, sender, uuid, user } = data;
 
-      console.log(groupId, message, sender, uuid, "communication"); // Log the extracted values
+      console.log(groupId, message, sender, uuid, user, "communication"); // Log the extracted values
 
       try {
         // Find the group in the database
         const group = await DriversMessage.findOne({ groupId: groupId });
 
         if (group) {
-          // Add the new message to the group's message list
           group.messages.push({
+            user: user,
             message: message,
             sender: sender,
             status: "delivered",
@@ -253,7 +252,6 @@ const messagingSockets = (server) => {
             uuid: uuid, // Save the UUID along with the message
           });
 
-          // Save the updated group document
           await group.save();
           console.log(`Message from ${sender} saved to group ${groupId}`);
 
@@ -263,6 +261,7 @@ const messagingSockets = (server) => {
             message: message,
             uuid: uuid, // Emit the UUID back to the group
             timestamp: new Date().toISOString(),
+            user: user,
             status: "delivered", // Use ISO format for consistency
           });
         } else {
@@ -277,7 +276,6 @@ const messagingSockets = (server) => {
 
     socket.on("sendMessageSupportRoom", (userId) => {
       console.log(`User ${userId} joining room`);
-      // Join the room based on userId
       socket.join(userId);
     });
 
