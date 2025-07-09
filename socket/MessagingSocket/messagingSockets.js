@@ -475,62 +475,42 @@ const messagingSockets = (server) => {
 
     socket.on("acceptRide", async (payload) => {
       if (!payload) {
-        console.error("No data received for acceptRide event.");
+        console.error("❌ No data received for acceptRide event.");
         return;
       }
-
-      // console.log(payload, "hjdriverIddriverId");
-
-      const { rideId, driverId, ride } = payload;
-
-      // Validate payload
-      if (!rideId || !driverId || !ride) {
-        console.error("Invalid data received for acceptRide event.", payload);
+    
+      const { rideId, driverId } = payload;
+    
+      if (!rideId || !driverId) {
+        console.error("❌ Missing rideId or driverId in acceptRide event:", payload);
         return;
       }
-
-      let rider;
-
+    
       try {
         if (!mongoose.Types.ObjectId.isValid(driverId)) {
-          console.error(`Invalid ObjectId: ${driverId}`);
+          console.error(`❌ Invalid ObjectId for driverId: ${driverId}`);
           return;
         }
-
-        // Fetch rider details
-        rider = await Rider.findById(driverId);
+    
+        const rider = await Rider.findById(driverId);
         if (!rider) {
-          console.error(`No rider found with ID: ${driverId}`);
+          console.error(`❌ Rider not found with ID: ${driverId}`);
           return;
         }
-      } catch (error) {
-        console.error("Error fetching rider:", error.message);
-        return;
-      }
-
-      const rideObject = rideId;
-
-      try {
-        // Update the status in RideSocket schema
+    
         const updatedRideSocket = await RideSocket.findOneAndUpdate(
-          { rideId }, // Query condition
-          { status: "accepted" }, // Update operation
-          { new: true } // Return the updated document
+          { rideId },
+          { status: "accepted" },
+          { new: true }
         );
-
+    
         if (!updatedRideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          console.error(`❌ RideSocket entry not found for rideId: ${rideId}`);
           return;
         }
-
-        console.log(
-          "RideSocket status updated successfully:"
-          // updatedRideSocket
-        );
-
-        // Update the ride details in RequestARide schema
+    
         const updatedRide = await RequestARide.findByIdAndUpdate(
-          rideObject,
+          rideId,
           {
             acceptRide: true,
             rider: {
@@ -542,44 +522,98 @@ const messagingSockets = (server) => {
               phoneNumber: rider.phoneNumber,
               driverRating: rider.driverRating,
               riderLocation: rider.riderLocation,
-              vehicleType: rider?.vehicleType,
-              vehicleName: rider?.vehicleName,
-              vehicleColor: rider?.vehicleColor,
+              vehicleType: rider.vehicleType,
+              vehicleName: rider.vehicleName,
+              vehicleColor: rider.vehicleColor,
             },
           },
           { new: true }
         );
-
+    
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
+          console.error(`❌ Ride not found with ID: ${rideId}`);
           return;
         }
-
-        console.log(
-          "RequestARide updated successfully:"
-          // updatedRide
-        );
-
-        // Create a MessageSupport document if it doesn't exist
-        const existingMessageSupport = await MessageSupport.findOne({ rideId });
-        if (!existingMessageSupport) {
-          const messageSupport = new MessageSupport({
-            rideId,
-            userId: updatedRide.rider.userId, // Rider's user ID
-            messages: [], // Initialize with an empty message array
-          });
-
-          await messageSupport.save();
-          console.log(
-            "MessageSupport document created successfully:"
-            // messageSupport
-          );
-        } else {
-          console.log("MessageSupport document already exists for this ride.");
+    
+        // ✅ Update customer's recent delivery location
+        try {
+          const customerUserId = updatedRide?.customer?.customerId;
+          const latestDrop = Array.isArray(updatedRide?.deliveryDropoff)
+            ? updatedRide.deliveryDropoff[0]
+            : null;
+    
+          if (
+            customerUserId &&
+            latestDrop &&
+            latestDrop?.deliveryAddress?.trim() &&
+            typeof latestDrop.deliveryLatitude === "number" &&
+            typeof latestDrop.deliveryLongitude === "number"
+          ) {
+            const customerUser = await User.findById(customerUserId);
+            if (customerUser) {
+              customerUser.addRecentDeliveryLocation({
+                address: latestDrop.deliveryAddress,
+                latitude: latestDrop.deliveryLatitude,
+                longitude: latestDrop.deliveryLongitude,
+              });
+              await customerUser.save();
+              console.log("✅ Customer's recent delivery location updated.");
+            } else {
+              console.warn(`⚠️ Customer user not found for ID: ${customerUserId}`);
+            }
+          } else {
+            console.warn("⚠️ Skipping customer delivery location update. Missing info.");
+          }
+        } catch (err) {
+          console.error("❌ Error updating customer delivery location:", err.message);
         }
-
-        // Emit updated ride data to the rideId room
-        io.to(rideObject).emit("rideBooked", {
+    
+        // ✅ Update receiving users
+        try {
+          const deliveryList = updatedRide.deliveryDropoff || [];
+          for (const delivery of deliveryList) {
+            if (
+              delivery?.receiverUserId &&
+              delivery?.deliveryAddress?.trim() &&
+              typeof delivery?.deliveryLatitude === "number" &&
+              typeof delivery?.deliveryLongitude === "number"
+            ) {
+              const receiverUser = await User.findById(delivery.receiverUserId);
+              if (receiverUser) {
+                receiverUser.addReceivingItem(rideId, {
+                  address: updatedRide?.pickup?.pickupAddress || "",
+                  latitude: updatedRide?.pickup?.pickupLatitude || 0,
+                  longitude: updatedRide?.pickup?.pickupLongitude || 0,
+                });
+                await receiverUser.save();
+                console.log(`✅ Receiver (${receiverUser._id}) receivingItems updated`);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("❌ Error updating receivers:", err.message);
+        }
+    
+        // ✅ Create MessageSupport if it doesn't exist
+        try {
+          const existingMessageSupport = await MessageSupport.findOne({ rideId });
+          if (!existingMessageSupport) {
+            const messageSupport = new MessageSupport({
+              rideId,
+              userId: rider._id,
+              messages: [],
+            });
+            await messageSupport.save();
+            console.log("✅ MessageSupport document created");
+          } else {
+            console.log("ℹ️ MessageSupport document already exists");
+          }
+        } catch (err) {
+          console.error("❌ Error creating MessageSupport:", err.message);
+        }
+    
+        // ✅ Emit update to all clients in room
+        io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
           rider: rider,
           pairing: false,
@@ -588,12 +622,10 @@ const messagingSockets = (server) => {
           endRide: false,
           reportRide: false,
         });
-
-        console.log("Accept Ride Event Processed Successfully:", {
-          // rideObject,
-        });
+    
+        console.log("✅ acceptRide event completed");
       } catch (error) {
-        console.error("Error processing acceptRide event:", error.message);
+        console.error("❌ Error handling acceptRide event:", error.message);
       }
     });
 
