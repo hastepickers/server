@@ -505,13 +505,10 @@ const messagingSockets = (server) => {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
-        //console.log("Rider found:", rider);
       } catch (error) {
         console.error("Error fetching rider:", error.message);
         return;
       }
-
-      // console.log("Rider Details:", rider, ride);
 
       const rideObject = rideId;
 
@@ -727,7 +724,6 @@ const messagingSockets = (server) => {
           return;
         }
 
-  
         if (updatedRide) {
           await addRiderEarnings(driverId, updatedRide?.totalPrice);
         }
@@ -738,12 +734,10 @@ const messagingSockets = (server) => {
           rider: rider,
           pairing: false,
           startRide: true,
-             endRide: true, // Notify that the ride has ended
+          endRide: true, // Notify that the ride has ended
           reportRide: false,
           acceptRide: true,
         });
-
-  
       } catch (error) {
         console.error(
           `Error processing endRide event for ride ID: ${rideObject}`,
