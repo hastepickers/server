@@ -55,6 +55,7 @@ const requestARideSchema = new mongoose.Schema(
           : this.totalPrice;
       },
     },
+    
     pickup: {
       id: { type: mongoose.Schema.Types.ObjectId, auto: true },
       pickupLatitude: { type: Number, required: true },
