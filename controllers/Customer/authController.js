@@ -28,6 +28,26 @@ const generateOtp = (length) => {
   return otp;
 };
 
+exports.verifyRefreshToken = (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Refresh token is required." });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    return res.status(200).json({ success: true, decoded });
+  } catch (error) {
+    console.error("❌ Invalid Refresh Token:", error.message);
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired refresh token." });
+  }
+};
+
 // Create User
 exports.createAccount = async (req, res) => {
   let { firstName, email, referralCode, lastName, phoneNumber, countryCode } =
@@ -174,7 +194,6 @@ exports.verifyNewAccount = async (req, res) => {
     //   userId: user._id,
     // });
 
-    
     await customerEarning.save();
 
     await Otp.deleteOne({ phoneNumber });
