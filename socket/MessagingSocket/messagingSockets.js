@@ -493,7 +493,6 @@ const messagingSockets = (server) => {
           { status: "accepted" },
           { new: true }
         );
-
         if (!updatedRideSocket)
           return console.error(`No RideSocket found for rideId: ${rideId}`);
 
@@ -517,17 +516,20 @@ const messagingSockets = (server) => {
           },
           { new: true }
         );
-
         if (!updatedRide)
           return console.error(`No ride found with ID: ${rideId}`);
 
-        // Update customer's recent delivery location
+        // Update recent delivery location for customer
         const customerUser = await User.findById(
-          updatedRide.customer.customerId
+          updatedRide.customer?.customerId
         );
         const latestDrop = updatedRide.deliveryDropoff?.[0];
 
-        if (customerUser && latestDrop) {
+        if (
+          customerUser &&
+          latestDrop &&
+          customerUser.addRecentDeliveryLocation
+        ) {
           customerUser.addRecentDeliveryLocation({
             address: latestDrop.deliveryAddress,
             latitude: latestDrop.deliveryLatitude,
@@ -537,34 +539,55 @@ const messagingSockets = (server) => {
           console.log("✅ Customer recent delivery location updated.");
         }
 
-        // Handle receivingItems update per delivery
+        // Update receivingItems for each delivery
         for (const delivery of updatedRide.deliveryDropoff || []) {
-          if (!delivery.receiverUserId || updatedRide.endRide?.isEnded)
+          if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded)
             continue;
 
           const receiverUser = await User.findById(delivery.receiverUserId);
+          const customer = updatedRide.customer || {};
+          const pickup = updatedRide.pickup || {};
 
-          if (
-            receiverUser &&
-            typeof receiverUser.addReceivingItemAdvanced === "function"
-          ) {
-            receiverUser.addReceivingItemAdvanced({
-              rideId: updatedRide._id,
-              deliveryCode: delivery.deliveryCode,
-              deliveryLocation: {
-                address: delivery.deliveryAddress,
-                latitude: delivery.deliveryLatitude,
-                longitude: delivery.deliveryLongitude,
-              },
-              pickup: {
-                senderName: `${updatedRide.customer.firstName} ${updatedRide.customer.lastName}`,
-                senderPhoneNumber: updatedRide.customer.phoneNumber,
-                pickupAddress: updatedRide.pickup.pickupAddress,
-              },
-              rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
-              createdAt: updatedRide.createdAt,
-            });
+          const receivingItemData = {
+            rideId: updatedRide._id,
+            deliveryCode: delivery.deliveryCode,
+            deliveryLocation: {
+              address: delivery.deliveryAddress,
+              latitude: delivery.deliveryLatitude,
+              longitude: delivery.deliveryLongitude,
+            },
+            pickup: {
+              senderName: `${customer.firstName || ""} ${
+                customer.lastName || ""
+              }`.trim(),
+              senderPhoneNumber: customer.phoneNumber,
+              pickupAddress: pickup.pickupAddress,
+            },
+            rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
+            createdAt: updatedRide.createdAt,
+          };
 
+          // Validate required fields
+          const isValid =
+            receivingItemData.rideId &&
+            receivingItemData.deliveryCode &&
+            receivingItemData.createdAt &&
+            receivingItemData.deliveryLocation?.address &&
+            receivingItemData.deliveryLocation?.latitude != null &&
+            receivingItemData.deliveryLocation?.longitude != null &&
+            receivingItemData.pickup?.senderName &&
+            receivingItemData.pickup?.senderPhoneNumber &&
+            receivingItemData.pickup?.pickupAddress;
+
+          if (!isValid) {
+            console.warn(
+              `⚠️ Skipping invalid delivery entry for user: ${delivery.receiverUserId}`
+            );
+            continue;
+          }
+
+          if (receiverUser?.addReceivingItemAdvanced) {
+            receiverUser.addReceivingItemAdvanced(receivingItemData);
             await receiverUser.save();
             console.log(
               `✅ Receiver (${receiverUser._id}) receivingItems updated.`
@@ -572,7 +595,7 @@ const messagingSockets = (server) => {
           }
         }
 
-        // Ensure message support exists
+        // Create MessageSupport if it doesn't exist
         const existingMessageSupport = await MessageSupport.findOne({ rideId });
         if (!existingMessageSupport) {
           await new MessageSupport({
@@ -583,7 +606,7 @@ const messagingSockets = (server) => {
           console.log("✅ MessageSupport created.");
         }
 
-        // Notify clients in room
+        // Emit updated ride to all clients in room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
           rider,
