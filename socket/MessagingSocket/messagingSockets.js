@@ -9,6 +9,36 @@ const RideSocket = require("../../models/Rider/RideSocket");
 const RiderEarnings = require("../../models/Rider/RiderEarnings");
 const User = require("../../models/Customer/User");
 // Calculate distance between two geographic points using the Haversine formula
+
+async function removeReceivingItemsForRide(rideId) {
+  try {
+    // Find all users who have any receivingItem with the given rideId
+    const usersToUpdate = await User.find({ "receivingItems.rideId": rideId });
+
+    if (usersToUpdate.length === 0) {
+      console.log(`No users found with receivingItems for rideId: ${rideId}`);
+      return;
+    }
+
+    for (const user of usersToUpdate) {
+      const initialCount = user.receivingItems.length;
+      user.receivingItems = user.receivingItems.filter(
+        (item) => !item.rideId.equals(rideId)
+      );
+      if (user.receivingItems.length < initialCount) {
+        await user.save();
+        console.log(
+          `✅ Removed receivingItems for rideId ${rideId} from user: ${user._id}`
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      `❌ Error removing receivingItems for rideId ${rideId}:`,
+      error.message
+    );
+  }
+}
 const addRiderEarnings = async (riderId, fare) => {
   try {
     if (!riderId || !fare) {
@@ -788,10 +818,11 @@ const messagingSockets = (server) => {
       }
 
       const { rideId, driverId, ride } = payload;
-      const rideObject = ride?._id;
+      const rideObject = ride?._id || rideId; // Ensure rideObject uses rideId if ride._id is not present
+
       // Validate payload
-      if (!rideId || !driverId) {
-        //console.error("Invalid data received for endRide event.", payload);
+      if (!rideObject || !driverId) {
+        console.error("Invalid data received for endRide event.", payload);
         return;
       }
 
@@ -803,16 +834,14 @@ const messagingSockets = (server) => {
           return;
         }
 
-        //console.log("Rider Details:", rider);
-
-        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
+        const rideSocket = await RideSocket.findOneAndDelete({
+          rideId: rideObject,
+        }); // Use rideObject here
 
         if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          console.error(`No RideSocket entry found with rideId: ${rideObject}`);
           return;
         }
-
-        //console.log("RideSocket entry removed successfully:", rideSocket);
 
         // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
@@ -825,16 +854,22 @@ const messagingSockets = (server) => {
         );
 
         if (!updatedRide) {
-          //console.error(`No ride found with ID: ${rideObject}`);
+          console.error(`No ride found with ID: ${rideObject}`);
           return;
         }
 
-        if (updatedRide) {
-          await addRiderEarnings(driverId, updatedRide?.totalPrice);
+        if (updatedRide.totalPrice) {
+          // Check if totalPrice exists before adding earnings
+          await addRiderEarnings(driverId, updatedRide.totalPrice);
         }
 
+        // --- NEW LOGIC: Remove receivingItems for this ride from all users ---
+        await removeReceivingItemsForRide(rideObject);
+        // --- END NEW LOGIC ---
+
         // Emit event to notify all users in the ride room
-        io.to(rideObject).emit("rideBooked", {
+        io.to(rideObject.toString()).emit("rideBooked", {
+          // Ensure rideObject is a string for socket room
           ride: updatedRide,
           rider: rider,
           pairing: false,
@@ -843,9 +878,11 @@ const messagingSockets = (server) => {
           reportRide: false,
           acceptRide: true,
         });
+
+        console.log("✅ endRide event completed for ride ID:", rideObject);
       } catch (error) {
         console.error(
-          `Error processing endRide event for ride ID: ${rideObject}`,
+          `❌ Error processing endRide event for ride ID: ${rideObject}`,
           error
         );
       }
@@ -857,8 +894,8 @@ const messagingSockets = (server) => {
         return;
       }
 
-      const { rideId, driverId } = payload;
-      console.log(rideId, "payloadpayloadpayloadpayload");
+      const { rideId } = payload;
+
       // Validate payload
       if (!rideId) {
         console.error("Invalid data received for cancelRide event.", payload);
@@ -866,16 +903,6 @@ const messagingSockets = (server) => {
       }
 
       try {
-        // Fetch the rider from the database
-        // const rider = await Rider.findById(driverId);
-        // if (!rider) {
-        //   console.error(`No rider found with ID: ${driverId}`);
-        //   return;
-        // }
-
-        // console.log("Rider Details:", rider);
-
-        // Update the ride with cancelRide status
         const rideSocket = await RideSocket.findOneAndDelete({ rideId });
 
         if (!rideSocket) {
@@ -901,29 +928,33 @@ const messagingSockets = (server) => {
 
         console.log("Ride cancellation processed successfully:", updatedRide);
 
+        // --- NEW LOGIC: Remove receivingItems for this ride from all users ---
+        await removeReceivingItemsForRide(rideId);
+        // --- END NEW LOGIC ---
+
         // Emit event to notify all users in the ride room
-        io.to(rideId).emit("rideBooked", {
+        io.to(rideId.toString()).emit("rideBooked", {
+          // Ensure rideId is a string for socket room
           ride: updatedRide,
-          //closestRider: rider,
           pairing: false,
-          startRide: false, // Indicate the ride has not started
+          startRide: false,
           endRide: false, // Notify that the ride has not ended
           reportRide: false,
           acceptRide: false,
           cancelRide: true, // Notify users about the cancellation
         });
 
-        console.log("Cancel Ride Event Processed Successfully:", {
-          ride: updatedRide,
-        });
+        console.log(
+          "✅ Cancel Ride Event Processed Successfully for ride ID:",
+          rideId
+        );
       } catch (error) {
         console.error(
-          `Error processing cancelRide event for ride ID: ${rideId}`,
+          `❌ Error processing cancelRide event for ride ID: ${rideId}`,
           error
         );
       }
     });
-
     socket.on("joinRide", async (rideId) => {
       console.log("user, joinedd", rideId);
       try {

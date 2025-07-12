@@ -16,7 +16,6 @@ const generateOtp = (length) => {
   }
   return otp;
 };
-
 exports.getUserReceivingRidesDetails = async (req, res) => {
   const userId = req.user.id;
 
@@ -33,25 +32,37 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
       receivingItems.map(async (item) => {
         try {
           const ride = await RequestARide.findById(item.rideId).lean();
-
           if (!ride) return null;
 
-          // Filter delivery dropoffs where receiverUserId matches current user
-          const filteredDropoffs = (ride.deliveryDropoff || []).filter(
+          const matchedDropoffs = (ride.deliveryDropoff || []).filter(
             (drop) =>
               drop.receiverUserId &&
               drop.receiverUserId.toString() === userId.toString()
           );
 
-          return {
-            rideId: item.rideId,
-            receivedAt: item.receivedAt,
-            pickup: item.pickup,
-            rideDetails: {
-              ...ride,
-              deliveryDropoff: filteredDropoffs,
+          if (matchedDropoffs.length === 0) return null;
+
+          // For each matching dropoff, construct minimal ride data
+          return matchedDropoffs.map((drop) => ({
+            rideId: ride._id,
+            deliveryLocation: {
+              address: drop.deliveryAddress,
+              latitude: drop.deliveryLatitude,
+              longitude: drop.deliveryLongitude,
             },
-          };
+            pickup: {
+              senderName: `${ride?.customer?.firstName || ""} ${
+                ride?.customer?.lastName || ""
+              }`.trim(),
+              senderPhoneNumber: ride?.customer?.phoneNumber || "",
+              pickupAddress: ride?.pickup?.pickupAddress || "",
+            },
+            rideStatus: {
+              isEnded: ride?.endRide?.isEnded || false,
+            },
+            createdAt: ride?.createdAt,
+            receivedAt: new Date(), // You can change this logic if needed
+          }));
         } catch (error) {
           console.error(`❌ Error fetching ride ${item.rideId}:`, error);
           return null;
@@ -59,7 +70,10 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
       })
     );
 
-    const validRides = ridesWithFilteredDropoffs.filter((r) => r !== null);
+    // Flatten array and remove nulls
+    const validRides = ridesWithFilteredDropoffs
+      .flat()
+      .filter((r) => r !== null);
 
     return res.status(200).json({
       user: {
