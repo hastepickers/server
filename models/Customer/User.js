@@ -15,19 +15,28 @@ const receivingItemSchema = new mongoose.Schema(
   {
     rideId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
       ref: "RequestARide",
+      required: true,
     },
-    pickup: {
+    deliveryCode: { type: String, required: true },
+    deliveryLocation: {
       address: { type: String, required: true },
       latitude: { type: Number, required: true },
       longitude: { type: Number, required: true },
     },
+    pickup: {
+      senderName: { type: String, required: true },
+      senderPhoneNumber: { type: String, required: true },
+      pickupAddress: { type: String, required: true },
+    },
+    rideStatus: {
+      isEnded: { type: Boolean, default: false },
+    },
     receivedAt: { type: Date, default: Date.now },
+    createdAt: { type: Date, required: true },
   },
   { _id: false }
 );
-
 const userSchema = new mongoose.Schema({
   firstName: { type: String, required: true, trim: true, lowercase: true },
   lastName: { type: String, required: true, trim: true, lowercase: true },

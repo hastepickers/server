@@ -475,29 +475,18 @@ const messagingSockets = (server) => {
     });
 
     socket.on("acceptRide", async (payload) => {
-      if (!payload) {
-        console.error("No data received for acceptRide event.");
-        return;
-      }
+      if (!payload)
+        return console.error("No data received for acceptRide event.");
 
       const { rideId, driverId } = payload;
 
-      if (!rideId || !driverId) {
-        console.error("Invalid data received for acceptRide event:", payload);
-        return;
+      if (!rideId || !driverId || !mongoose.Types.ObjectId.isValid(driverId)) {
+        return console.error("Invalid data for acceptRide:", payload);
       }
 
       try {
-        if (!mongoose.Types.ObjectId.isValid(driverId)) {
-          console.error(`Invalid ObjectId: ${driverId}`);
-          return;
-        }
-
         const rider = await Rider.findById(driverId);
-        if (!rider) {
-          console.error(`No rider found with ID: ${driverId}`);
-          return;
-        }
+        if (!rider) return console.error(`No rider found with ID: ${driverId}`);
 
         const updatedRideSocket = await RideSocket.findOneAndUpdate(
           { rideId },
@@ -505,10 +494,8 @@ const messagingSockets = (server) => {
           { new: true }
         );
 
-        if (!updatedRideSocket) {
-          console.error(`No RideSocket entry found for rideId: ${rideId}`);
-          return;
-        }
+        if (!updatedRideSocket)
+          return console.error(`No RideSocket found for rideId: ${rideId}`);
 
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
@@ -531,90 +518,72 @@ const messagingSockets = (server) => {
           { new: true }
         );
 
-        if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
-          return;
-        }
+        if (!updatedRide)
+          return console.error(`No ride found with ID: ${rideId}`);
 
-        // Update recent delivery location
+        // Update customer's recent delivery location
         const customerUser = await User.findById(
-          updatedRide?.customer?.customerId
+          updatedRide.customer.customerId
         );
-        const latestDrop = updatedRide?.deliveryDropoff?.[0];
+        const latestDrop = updatedRide.deliveryDropoff?.[0];
 
-        if (
-          customerUser &&
-          typeof customerUser.addRecentDeliveryLocation === "function" &&
-          latestDrop &&
-          latestDrop.deliveryAddress &&
-          latestDrop.deliveryLatitude != null &&
-          latestDrop.deliveryLongitude != null
-        ) {
+        if (customerUser && latestDrop) {
           customerUser.addRecentDeliveryLocation({
             address: latestDrop.deliveryAddress,
             latitude: latestDrop.deliveryLatitude,
             longitude: latestDrop.deliveryLongitude,
           });
-
           await customerUser.save();
-          console.log("✅ Customer's recent delivery location updated.");
-        } else {
-          console.warn(
-            "⚠️ Could not update recent delivery location. Missing data or method."
-          );
+          console.log("✅ Customer recent delivery location updated.");
         }
 
-        // Update receiving items for each delivery
-        const deliveryList = updatedRide.deliveryDropoff || [];
+        // Handle receivingItems update per delivery
+        for (const delivery of updatedRide.deliveryDropoff || []) {
+          if (!delivery.receiverUserId || updatedRide.endRide?.isEnded)
+            continue;
 
-        for (const delivery of deliveryList) {
+          const receiverUser = await User.findById(delivery.receiverUserId);
+
           if (
-            delivery.receiverUserId &&
-            delivery.deliveryAddress &&
-            delivery.deliveryLatitude != null &&
-            delivery.deliveryLongitude != null
+            receiverUser &&
+            typeof receiverUser.addReceivingItemAdvanced === "function"
           ) {
-            const receiverUser = await User.findById(delivery.receiverUserId);
+            receiverUser.addReceivingItemAdvanced({
+              rideId: updatedRide._id,
+              deliveryCode: delivery.deliveryCode,
+              deliveryLocation: {
+                address: delivery.deliveryAddress,
+                latitude: delivery.deliveryLatitude,
+                longitude: delivery.deliveryLongitude,
+              },
+              pickup: {
+                senderName: `${updatedRide.customer.firstName} ${updatedRide.customer.lastName}`,
+                senderPhoneNumber: updatedRide.customer.phoneNumber,
+                pickupAddress: updatedRide.pickup.pickupAddress,
+              },
+              rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
+              createdAt: updatedRide.createdAt,
+            });
 
-            if (
-              receiverUser &&
-              typeof receiverUser.addReceivingItem === "function"
-            ) {
-              receiverUser.addReceivingItem(rideId, {
-                address: updatedRide.pickup?.pickupAddress,
-                latitude: updatedRide.pickup?.pickupLatitude,
-                longitude: updatedRide.pickup?.pickupLongitude,
-              });
-
-              await receiverUser.save();
-              console.log(
-                `✅ Receiver (${receiverUser._id}) receivingItems updated.`
-              );
-            } else {
-              console.warn(
-                `⚠️ Receiver user or addReceivingItem method not available.`
-              );
-            }
+            await receiverUser.save();
+            console.log(
+              `✅ Receiver (${receiverUser._id}) receivingItems updated.`
+            );
           }
         }
 
-        // Create message support if not already present
+        // Ensure message support exists
         const existingMessageSupport = await MessageSupport.findOne({ rideId });
-
         if (!existingMessageSupport) {
-          const messageSupport = new MessageSupport({
+          await new MessageSupport({
             rideId,
             userId: rider._id,
             messages: [],
-          });
-
-          await messageSupport.save();
-          console.log("✅ MessageSupport document created.");
-        } else {
-          console.log("ℹ️ MessageSupport document already exists.");
+          }).save();
+          console.log("✅ MessageSupport created.");
         }
 
-        // Emit updated ride to all clients in room
+        // Notify clients in room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
           rider,
@@ -626,8 +595,8 @@ const messagingSockets = (server) => {
         });
 
         console.log("✅ acceptRide event completed.");
-      } catch (error) {
-        console.error("❌ Error handling acceptRide event:", error.message);
+      } catch (err) {
+        console.error("❌ Error in acceptRide handler:", err.message);
       }
     });
 

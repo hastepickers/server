@@ -22,6 +22,8 @@ router.get("/healthCheck", authController.healthCheck);
 // Verify Account
 router.post("/verify", authController.verifyAccount);
 
+router.post("/verify-refresh-token", authController.verifyRefreshToken);
+//verifyRefreshToken
 // Resend OTP
 router.post("/resend-otp", authController.resendOtp);
 
