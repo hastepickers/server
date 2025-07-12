@@ -6,7 +6,17 @@ const Rider = require("../../models/Rider/RiderSchema");
 const mongoose = require("mongoose");
 const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
-//const { Types } = mongoose
+const { v4: uuidv4 } = require("uuid");
+
+// Helper to generate pickup or delivery code
+function generateCustomCode(prefix = "USER") {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix.split(" ")[0]}-${code}`.toUpperCase();
+}
 
 // Helper function to calculate distance between two lat/lng points in km
 function haversineDistance(lat1, lng1, lat2, lng2) {
@@ -231,26 +241,38 @@ exports.bookARide = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Get customer from DB
+    // 1. Fetch customer
     const customer = await User.findById(userId).select(
-      'firstName lastName phoneNumber imageUrl email'
+      "firstName lastName phoneNumber imageUrl email"
     );
-
     if (!customer) {
-      return res.status(404).json({ message: 'Customer not found.' });
+      return res.status(404).json({ message: "Customer not found." });
     }
 
-    // 2. Extract ride details from body
+    // 2. Extract and validate body
     const { deliveryDropoff, pickup, typeOfVehicle, totalPrice } = req.body;
 
-    // 3. Validate deliveryDropoff array exists
     if (!Array.isArray(deliveryDropoff) || deliveryDropoff.length === 0) {
-      return res.status(400).json({
-        message: 'At least one delivery drop-off point is required.',
-      });
+      return res
+        .status(400)
+        .json({ message: "At least one delivery drop-off point is required." });
     }
 
-    // 4. Clean & normalize delivery dropoffs
+    if (
+      !pickup ||
+      !pickup.pickupLatitude ||
+      !pickup.pickupLongitude ||
+      !pickup.pickupAddress
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Pickup location details are required." });
+    }
+
+    // 3. Generate pickupCode
+    const pickupCode = generateCustomCode(customer.firstName);
+
+    // 4. Normalize delivery dropoffs
     const cleanedDropoffs = deliveryDropoff.map((drop, index) => {
       if (
         !drop.deliveryLatitude ||
@@ -271,29 +293,22 @@ exports.bookARide = async (req, res) => {
         receiverName: drop.receiverName,
         receiverPhoneNumber: drop.receiverPhoneNumber,
         receiverUserId:
-          drop.receiverUserId && drop.receiverUserId !== ''
+          drop.receiverUserId && drop.receiverUserId !== ""
             ? drop.receiverUserId
             : undefined,
         items: drop.items || [],
+        parcelId: uuidv4().split("-")[0].toUpperCase(), // Short UUID
+        deliveryCode: pickupCode, // Same as pickupCode
       };
     });
 
-    // 5. Validate pickup details
-    if (
-      !pickup ||
-      !pickup.pickupLatitude ||
-      !pickup.pickupLongitude ||
-      !pickup.pickupAddress
-    ) {
-      return res.status(400).json({
-        message: 'Pickup location details are required.',
-      });
-    }
-
-    // 6. Create new ride
+    // 5. Build full ride object
     const newRideRequest = new RequestARide({
       deliveryDropoff: cleanedDropoffs,
-      pickup,
+      pickup: {
+        ...pickup,
+        pickupCode: pickupCode,
+      },
       typeOfVehicle,
       totalPrice,
       customer: {
@@ -306,22 +321,22 @@ exports.bookARide = async (req, res) => {
       },
     });
 
+    // 6. Save and respond
     await newRideRequest.save();
 
     return res.status(201).json({
-      message: 'Ride request booked successfully',
+      message: "Ride request booked successfully",
       rideRequest: newRideRequest,
       success: true,
     });
   } catch (error) {
-    console.error('❌ Error booking ride request:', error);
+    console.error("❌ Error booking ride request:", error);
     return res.status(500).json({
-      message: 'Error booking ride request',
+      message: "Error booking ride request",
       error: error.message,
     });
   }
 };
-
 exports.acceptRide = async (req, res) => {
   try {
     const { rideId } = req.params; // Ride ID from the URL

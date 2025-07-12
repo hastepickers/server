@@ -89,6 +89,7 @@ app.post("/send-notification", async (req, res) => {
   }
 });
 
+
 app.use("/api/auth", authRoutes);
 app.use("/api/user", verifyToken, userRoutes);
 app.use("/api/ride", verifyToken, requestARide);
