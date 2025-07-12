@@ -96,15 +96,23 @@ userSchema.methods.addRecentDeliveryLocation = function (location) {
   this.recentDeliveryLocations = this.recentDeliveryLocations.slice(0, 5);
 };
 
-userSchema.methods.addReceivingItem = function (rideId, pickup) {
+userSchema.methods.addReceivingItem = function (receivingItemData) {
   this.receivingItems.unshift({
-    rideId,
-    pickup: {
-      address: pickup.address,
-      latitude: pickup.latitude,
-      longitude: pickup.longitude,
+    rideId: receivingItemData.rideId,
+    deliveryCode: receivingItemData.deliveryCode,
+    deliveryLocation: {
+      address: receivingItemData.deliveryLocation.address,
+      latitude: receivingItemData.deliveryLocation.latitude,
+      longitude: receivingItemData.deliveryLocation.longitude,
     },
-    receivedAt: new Date(),
+    pickup: {
+      senderName: receivingItemData.pickup.senderName,
+      senderPhoneNumber: receivingItemData.pickup.senderPhoneNumber,
+      pickupAddress: receivingItemData.pickup.pickupAddress,
+    },
+    rideStatus: { isEnded: receivingItemData.rideStatus.isEnded },
+    createdAt: receivingItemData.createdAt,
+    receivedAt: new Date(), // Set to current time when received
   });
 };
 

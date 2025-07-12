@@ -475,8 +475,9 @@ const messagingSockets = (server) => {
     });
 
     socket.on("acceptRide", async (payload) => {
-      if (!payload)
+      if (!payload) {
         return console.error("No data received for acceptRide event.");
+      }
 
       const { rideId, driverId } = payload;
 
@@ -486,15 +487,18 @@ const messagingSockets = (server) => {
 
       try {
         const rider = await Rider.findById(driverId);
-        if (!rider) return console.error(`No rider found with ID: ${driverId}`);
+        if (!rider) {
+          return console.error(`No rider found with ID: ${driverId}`);
+        }
 
         const updatedRideSocket = await RideSocket.findOneAndUpdate(
           { rideId },
           { status: "accepted" },
           { new: true }
         );
-        if (!updatedRideSocket)
+        if (!updatedRideSocket) {
           return console.error(`No RideSocket found for rideId: ${rideId}`);
+        }
 
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
@@ -515,9 +519,11 @@ const messagingSockets = (server) => {
             },
           },
           { new: true }
-        );
-        if (!updatedRide)
+        ).populate("customer.customerId"); // Populate customer to ensure all details are present
+
+        if (!updatedRide) {
           return console.error(`No ride found with ID: ${rideId}`);
+        }
 
         // Update recent delivery location for customer
         const customerUser = await User.findById(
@@ -539,58 +545,133 @@ const messagingSockets = (server) => {
           console.log("✅ Customer recent delivery location updated.");
         }
 
-        // Update receivingItems for each delivery
+        // Update receivingItems for each delivery in deliveryDropoff
         for (const delivery of updatedRide.deliveryDropoff || []) {
-          if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded)
+          // Only process deliveries that have a receiverUserId and the ride is not ended
+          if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded) {
+            if (updatedRide.endRide?.isEnded) {
+              console.log(
+                `❕ Skipping delivery for ride ${rideId} as it has ended.`
+              );
+            } else {
+              console.warn(
+                `⚠️ Skipping delivery due to missing receiverUserId: ${JSON.stringify(
+                  delivery
+                )}`
+              );
+            }
             continue;
+          }
 
           const receiverUser = await User.findById(delivery.receiverUserId);
-          const customer = updatedRide.customer || {};
-          const pickup = updatedRide.pickup || {};
 
-          const receivingItemData = {
-            rideId: updatedRide._id,
-            deliveryCode: delivery.deliveryCode,
-            deliveryLocation: {
-              address: delivery.deliveryAddress,
-              latitude: delivery.deliveryLatitude,
-              longitude: delivery.deliveryLongitude,
-            },
-            pickup: {
-              senderName: `${customer.firstName || ""} ${
-                customer.lastName || ""
-              }`.trim(),
-              senderPhoneNumber: customer.phoneNumber,
-              pickupAddress: pickup.pickupAddress,
-            },
-            rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
-            createdAt: updatedRide.createdAt,
-          };
-
-          // Validate required fields
-          const isValid =
-            receivingItemData.rideId &&
-            receivingItemData.deliveryCode &&
-            receivingItemData.createdAt &&
-            receivingItemData.deliveryLocation?.address &&
-            receivingItemData.deliveryLocation?.latitude != null &&
-            receivingItemData.deliveryLocation?.longitude != null &&
-            receivingItemData.pickup?.senderName &&
-            receivingItemData.pickup?.senderPhoneNumber &&
-            receivingItemData.pickup?.pickupAddress;
-
-          if (!isValid) {
+          if (!receiverUser) {
             console.warn(
-              `⚠️ Skipping invalid delivery entry for user: ${delivery.receiverUserId}`
+              `⚠️ No receiver user found with ID: ${delivery.receiverUserId}. Skipping delivery update for this item.`
             );
             continue;
           }
 
-          if (receiverUser?.addReceivingItemAdvanced) {
-            receiverUser.addReceivingItemAdvanced(receivingItemData);
+          const customer = updatedRide.customer || {};
+          const pickup = updatedRide.pickup || {};
+
+          // Prepare receivingItemData ensuring all required fields are present and valid
+          const receivingItemData = {
+            rideId: updatedRide._id,
+            deliveryCode:
+              delivery.deliveryCode ||
+              `GEN-${Date.now()}-${Math.random()
+                .toString(36)
+                .substr(2, 5)
+                .toUpperCase()}`, // Ensure a delivery code is always present
+            deliveryLocation: {
+              address: delivery.deliveryAddress || "",
+              latitude: delivery.deliveryLatitude,
+              longitude: delivery.deliveryLongitude,
+            },
+            pickup: {
+              senderName:
+                `${customer.firstName || ""} ${
+                  customer.lastName || ""
+                }`.trim() || "N/A",
+              senderPhoneNumber: customer.phoneNumber || "N/A",
+              pickupAddress: pickup.pickupAddress || "N/A",
+            },
+            rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
+            createdAt: updatedRide.createdAt
+              ? new Date(updatedRide.createdAt)
+              : new Date(), // Ensure createdAt is a Date object
+          };
+
+          // Perform pre-validation check
+          const isValid =
+            receivingItemData.rideId &&
+            receivingItemData.deliveryCode &&
+            receivingItemData.createdAt instanceof Date &&
+            receivingItemData.deliveryLocation.address &&
+            typeof receivingItemData.deliveryLocation.latitude === "number" &&
+            !isNaN(receivingItemData.deliveryLocation.latitude) &&
+            typeof receivingItemData.deliveryLocation.longitude === "number" &&
+            !isNaN(receivingItemData.deliveryLocation.longitude) &&
+            receivingItemData.pickup.senderName &&
+            receivingItemData.pickup.senderPhoneNumber &&
+            receivingItemData.pickup.pickupAddress;
+
+          if (!isValid) {
+            console.error(
+              "❌ Invalid receivingItemData for user:",
+              receiverUser._id,
+              "Data:",
+              receivingItemData
+            );
+            // Log specific missing fields for easier debugging
+            if (!receivingItemData.rideId) console.error("   - Missing rideId");
+            if (!receivingItemData.deliveryCode)
+              console.error("   - Missing deliveryCode");
+            if (!(receivingItemData.createdAt instanceof Date))
+              console.error("   - Missing or invalid createdAt");
+            if (!receivingItemData.deliveryLocation.address)
+              console.error("   - Missing deliveryLocation.address");
+            if (
+              !(
+                typeof receivingItemData.deliveryLocation.latitude ===
+                  "number" &&
+                !isNaN(receivingItemData.deliveryLocation.latitude)
+              )
+            )
+              console.error(
+                "   - Missing or invalid deliveryLocation.latitude"
+              );
+            if (
+              !(
+                typeof receivingItemData.deliveryLocation.longitude ===
+                  "number" &&
+                !isNaN(receivingItemData.deliveryLocation.longitude)
+              )
+            )
+              console.error(
+                "   - Missing or invalid deliveryLocation.longitude"
+              );
+            if (!receivingItemData.pickup.senderName)
+              console.error("   - Missing pickup.senderName");
+            if (!receivingItemData.pickup.senderPhoneNumber)
+              console.error("   - Missing pickup.senderPhoneNumber");
+            if (!receivingItemData.pickup.pickupAddress)
+              console.error("   - Missing pickup.pickupAddress");
+            continue; // Skip this invalid entry
+          }
+
+          // Add the receiving item to the receiver's user document
+          // Ensure the addReceivingItem method in User.js is updated to accept the full receivingItemData object
+          if (receiverUser.addReceivingItem) {
+            receiverUser.addReceivingItem(receivingItemData);
             await receiverUser.save();
             console.log(
-              `✅ Receiver (${receiverUser._id}) receivingItems updated.`
+              `✅ Receiver (${receiverUser._id}) receivingItems updated for delivery code: ${receivingItemData.deliveryCode}.`
+            );
+          } else {
+            console.warn(
+              `⚠️ User method 'addReceivingItem' not found for user ${receiverUser._id}. Please define it on the User schema.`
             );
           }
         }
