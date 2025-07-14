@@ -17,63 +17,110 @@ const generateOtp = (length) => {
   return otp;
 };
 exports.getUserReceivingRidesDetails = async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(400).json({ message: "Invalid user ID in request" });
+  }
 
   try {
     const user = await User.findById(userId).select("-password");
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const receivingItems = user.receivingItems || [];
+    let receivingItems = Array.isArray(user.receivingItems)
+      ? user.receivingItems
+      : [];
+
+    const seenParcelIds = new Set();
+    const validItems = [];
+
+    for (const item of receivingItems) {
+      const deliveryCode = item?.deliveryCode || "";
+      const rideId = item?.rideId;
+
+      if (!deliveryCode || seenParcelIds.has(deliveryCode) || !rideId) continue;
+
+      const ride = await RequestARide.findById(rideId).lean();
+      if (!ride || ride?.endRide?.isEnded) continue;
+
+      seenParcelIds.add(deliveryCode);
+      validItems.push(item);
+    }
+
+    // Optionally update user's receivingItems to reflect cleaned data
+    const shouldUpdate =
+      user.receivingItems.length !== validItems.length;
+
+    if (shouldUpdate) {
+      user.receivingItems = validItems;
+      await user.save();
+    }
 
     const ridesWithFilteredDropoffs = await Promise.all(
-      receivingItems.map(async (item) => {
+      validItems.map(async (item) => {
         try {
           const ride = await RequestARide.findById(item.rideId).lean();
-          if (!ride) return null;
+          if (!ride || !Array.isArray(ride.deliveryDropoff)) return null;
 
-          const matchedDropoffs = (ride.deliveryDropoff || []).filter(
+          const matchedDropoffs = ride.deliveryDropoff.filter(
             (drop) =>
-              drop.receiverUserId &&
-              drop.receiverUserId.toString() === userId.toString()
+              drop?.receiverUserId?.toString?.() === userId.toString()
           );
 
           if (matchedDropoffs.length === 0) return null;
 
-          // For each matching dropoff, construct minimal ride data
-          return matchedDropoffs.map((drop) => ({
-            rideId: ride._id,
-            deliveryLocation: {
-              address: drop.deliveryAddress,
-              latitude: drop.deliveryLatitude,
-              longitude: drop.deliveryLongitude,
-            },
-            pickup: {
-              senderName: `${ride?.customer?.firstName || ""} ${
-                ride?.customer?.lastName || ""
-              }`.trim(),
-              senderPhoneNumber: ride?.customer?.phoneNumber || "",
-              pickupAddress: ride?.pickup?.pickupAddress || "",
-            },
-            rideStatus: {
-              isEnded: ride?.endRide?.isEnded || false,
-            },
-            createdAt: ride?.createdAt,
-            receivedAt: new Date(), // You can change this logic if needed
-          }));
-        } catch (error) {
-          console.error(`❌ Error fetching ride ${item.rideId}:`, error);
+          return matchedDropoffs.map((drop) => {
+           // console.log("📦 Matched Dropoff:", drop);
+
+            const deliveryCode = drop?.parcelId || item?.deliveryCode || "";
+
+            return {
+              rideId: ride._id,
+              deliveryCode,
+              deliveryLocation: {
+                address: drop?.deliveryAddress || "",
+                latitude: drop?.deliveryLatitude || 0,
+                longitude: drop?.deliveryLongitude || 0,
+              },
+              pickup: {
+                senderName: `${ride?.customer?.firstName || ""} ${
+                  ride?.customer?.lastName || ""
+                }`.trim(),
+                senderPhoneNumber: ride?.customer?.phoneNumber?.startsWith("+234")
+                  ? ride.customer.phoneNumber
+                  : "+234" +
+                      (ride?.customer?.phoneNumber?.replace(/^0/, "") || ""),
+                pickupAddress: ride?.pickup?.pickupAddress || "",
+              },
+              rideStatus: {
+                isEnded: ride?.endRide?.isEnded || false,
+              },
+              createdAt: ride?.createdAt || null,
+              receivedAt: new Date(),
+            };
+          });
+        } catch (err) {
+          console.error(`❌ Error mapping ride ${item.rideId}:`, err);
           return null;
         }
       })
     );
 
-    // Flatten array and remove nulls
-    const validRides = ridesWithFilteredDropoffs
+    const allRides = ridesWithFilteredDropoffs
       .flat()
-      .filter((r) => r !== null);
+      .filter((r) => r && r.deliveryCode);
+
+    // Final deduplication
+    const uniqueRidesMap = new Map();
+    for (const ride of allRides) {
+      if (!uniqueRidesMap.has(ride.deliveryCode)) {
+        uniqueRidesMap.set(ride.deliveryCode, ride);
+      }
+    }
+
+    const uniqueRides = Array.from(uniqueRidesMap.values());
 
     return res.status(200).json({
       user: {
@@ -84,13 +131,13 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
         email: user.email,
         imageUrl: user.imageUrl,
       },
-      receivingRides: validRides,
+      receivingRides: uniqueRides,
     });
   } catch (err) {
     console.error("❌ Error in getUserReceivingRidesDetails:", err);
     return res.status(500).json({
       message: "Internal server error",
-      error: err.message,
+      error: err.message || "Unknown error",
     });
   }
 };

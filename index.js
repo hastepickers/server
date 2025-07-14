@@ -43,52 +43,23 @@ app.get("/", (req, res) => {
 
 const deviceTokens = new Set();
 
-app.post("/register-token", (req, res) => {
-  const { token } = req.body;
-  if (!token) {
-    return res.status(400).json({ error: "Device token is required" });
+app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
+  const { deviceToken } = req.body;
+  console.log("✅ device token:", deviceToken);
+
+  if (!deviceToken) {
+    return res.status(400).json({ message: "Device token is required." });
   }
 
-  console.log(`Received device token: ${token}`);
-  deviceTokens.add(token);
-  res.status(200).json({ message: "Token registered successfully!" });
+  if (!deviceTokens.has(deviceToken)) {
+    deviceTokens.add(deviceToken);
+    console.log("✅ Registered device token:", deviceToken);
+  } else {
+    console.log("ℹ️ Device token already registered:", deviceToken);
+  }
+
+  return res.status(200).json({ message: "Device token registered." });
 });
-
-app.post("/send-notification", async (req, res) => {
-  const { title, body } = req.body;
-
-  if (!title || !body) {
-    return res.status(400).json({ error: "Title and body are required" });
-  }
-
-  if (deviceTokens.size === 0) {
-    return res
-      .status(404)
-      .json({
-        message: "No device tokens registered to send notifications to.",
-      });
-  }
-
-  const tokensArray = Array.from(deviceTokens);
-  console.log(
-    `Attempting to send notification to ${tokensArray.length} devices.`
-  );
-
-  try {
-    console.log(
-      `Conceptual notification sent: Title - "${title}", Body - "${body}" to ${tokensArray.length} devices.`
-    );
-    res
-      .status(200)
-      .json({ message: "Notification send simulated successfully!" });
-  } catch (error) {
-    console.error("Error sending message (conceptual):", error);
-    res
-      .status(500)
-      .json({ error: "Failed to send notification (conceptual)." });
-  }
-});
-
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", verifyToken, userRoutes);
