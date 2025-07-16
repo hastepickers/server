@@ -735,7 +735,7 @@ const messagingSockets = (server) => {
           const tokens = await DeviceToken.find({ userId: customerUserId });
           if (tokens.length > 0) {
             const deviceTokens = tokens.map((t) => t.deviceToken);
-    
+
             const title = "Driver Accepted Your Ride 🚗";
             const message =
               "Your driver is on the way.\nTrack their location in real time.\nTap to view details.";
@@ -743,19 +743,20 @@ const messagingSockets = (server) => {
               screen: "RideDetailsPage",
               params: { rideId: updatedRide._id.toString() },
             };
-    
+
             for (const token of deviceTokens) {
               await sendIOSPush(token, title, message, payload);
             }
-    
+
             console.log(`✅ Push notification sent to user ${customerUserId}`);
           } else {
-            console.warn(`⚠️ No device tokens found for user ${customerUserId}`);
+            console.warn(
+              `⚠️ No device tokens found for user ${customerUserId}`
+            );
           }
         } else {
           console.warn("⚠️ No customer userId found in updatedRide.");
         }
-
 
         console.log("✅ acceptRide event completed.");
       } catch (err) {
@@ -832,6 +833,33 @@ const messagingSockets = (server) => {
         console.log("Start Ride Event Processed Successfully:", {
           ride: updatedRide,
         });
+
+        const customerUserId = updatedRide?.customer?.customerId;
+        if (customerUserId) {
+          const tokens = await DeviceToken.find({ userId: customerUserId });
+          if (tokens.length > 0) {
+            const deviceTokens = tokens.map((t) => t.deviceToken);
+
+            const title = `Your Ride Has Started ✅`;
+            const message = `Your driver has picked you up.\nSit back and enjoy your trip.\nTrack your ride in real-time.`;
+            const payload = {
+              screen: "RideDetailsPage",
+              params: { rideId: updatedRide._id.toString() },
+            };
+
+            for (const token of deviceTokens) {
+              await sendIOSPush(token, title, message, payload);
+            }
+
+            console.log(`✅ Push notification sent to user ${customerUserId}`);
+          } else {
+            console.warn(
+              `⚠️ No device tokens found for user ${customerUserId}`
+            );
+          }
+        } else {
+          console.warn("⚠️ No customer userId found in updatedRide.");
+        }
       } catch (error) {
         console.error(
           `Error processing startRide event for ride ID: ${rideId}`,
@@ -907,6 +935,33 @@ const messagingSockets = (server) => {
           reportRide: false,
           acceptRide: true,
         });
+
+        const customerUserId = updatedRide?.customer?.customerId;
+        if (customerUserId) {
+          const tokens = await DeviceToken.find({ userId: customerUserId });
+          if (tokens.length > 0) {
+            const deviceTokens = tokens.map((t) => t.deviceToken);
+
+            const title = `Your Ride Has Ended 🏁`;
+            const message = `Thank you for riding with us.\nPlease rate your driver now.\nTap to view trip summary.`;
+            const payload = {
+              screen: "RideDetailsPage",
+              params: { rideId: updatedRide._id.toString() },
+            };
+
+            for (const token of deviceTokens) {
+              await sendIOSPush(token, title, message, payload);
+            }
+
+            console.log(`✅ Push notification sent to user ${customerUserId}`);
+          } else {
+            console.warn(
+              `⚠️ No device tokens found for user ${customerUserId}`
+            );
+          }
+        } else {
+          console.warn("⚠️ No customer userId found in updatedRide.");
+        }
 
         console.log("✅ endRide event completed for ride ID:", rideObject);
       } catch (error) {
