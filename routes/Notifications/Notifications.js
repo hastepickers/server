@@ -38,32 +38,36 @@ router.post("/push-notifications/register-device-token", async (req, res) => {
 
 router.post("/push-notifications/send", async (req, res) => {
   try {
-    const { userIds, title, message } = req.body;
+    const { userIds, title, message, screen, params } = req.body;
 
+    // Validate required fields
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-      return res.status(400).json({
-        message: "userIds (array), title, and message are required.",
-      });
+      return res.status(400).json({ message: "userIds (array) are required." });
     }
-
     if (!title || !message) {
       return res
         .status(400)
-        .json({ message: "Title and message are required." });
+        .json({ message: "title and message are required." });
     }
 
-  
+    // Fetch users with matching device tokens
     const users = await DeviceToken.find({ userId: { $in: userIds } });
-
     if (users.length === 0) {
-      return res.status(404).json({
-        message: "No users found or no device tokens registered.",
-      });
+      return res
+        .status(404)
+        .json({ message: "No users found with device tokens." });
     }
+
     const tokens = users.map((u) => u.deviceToken);
     const responses = [];
+
     for (const token of tokens) {
-      const response = await sendIOSPush(token, title, message);
+      // ✅ Only include payload if screen or params exist
+      const payload =
+        screen || params ? { screen, params: params || {} } : undefined;
+
+      console.log(token, title, message, payload);
+      const response = await sendIOSPush(token, title, message, payload);
       responses.push({ token, response });
     }
 
@@ -76,4 +80,5 @@ router.post("/push-notifications/send", async (req, res) => {
     return res.status(500).json({ message: "Failed to send notifications." });
   }
 });
+
 module.exports = router;

@@ -8,6 +8,8 @@ const Rider = require("../../models/Rider/RiderSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 const RiderEarnings = require("../../models/Rider/RiderEarnings");
 const User = require("../../models/Customer/User");
+const { sendIOSPush } = require("../../utils/sendIOSPush");
+const DeviceToken = require("../../models/DeviceToken");
 // Calculate distance between two geographic points using the Haversine formula
 
 async function removeReceivingItemsForRide(rideId) {
@@ -727,6 +729,33 @@ const messagingSockets = (server) => {
           endRide: false,
           reportRide: false,
         });
+
+        const customerUserId = updatedRide?.customer?.customerId;
+        if (customerUserId) {
+          const tokens = await DeviceToken.find({ userId: customerUserId });
+          if (tokens.length > 0) {
+            const deviceTokens = tokens.map((t) => t.deviceToken);
+    
+            const title = "Driver Accepted Your Ride 🚗";
+            const message =
+              "Your driver is on the way.\nTrack their location in real time.\nTap to view details.";
+            const payload = {
+              screen: "RideDetailsPage",
+              params: { rideId: updatedRide._id.toString() },
+            };
+    
+            for (const token of deviceTokens) {
+              await sendIOSPush(token, title, message, payload);
+            }
+    
+            console.log(`✅ Push notification sent to user ${customerUserId}`);
+          } else {
+            console.warn(`⚠️ No device tokens found for user ${customerUserId}`);
+          }
+        } else {
+          console.warn("⚠️ No customer userId found in updatedRide.");
+        }
+
 
         console.log("✅ acceptRide event completed.");
       } catch (err) {
