@@ -1,10 +1,10 @@
 const express = require("express");
-const DeviceToken = require("../models/DeviceToken");
-const sendIOSPush = require("../services/apnSender");
+const DeviceToken = require("../../models/DeviceToken");
+const sendIOSPush = require("../../utils/sendIOSPush");
 
 const router = express.Router();
 
-router.post("/push/notifications/register-device-token", async (req, res) => {
+router.post("/push-notifications/register-device-token", async (req, res) => {
   try {
     const { userId, deviceToken } = req.body;
 
@@ -23,7 +23,7 @@ router.post("/push/notifications/register-device-token", async (req, res) => {
         .status(200)
         .json({ message: "Device token updated successfully." });
     }
-    
+
     await DeviceToken.create({ userId, deviceToken });
     return res
       .status(201)
@@ -34,7 +34,7 @@ router.post("/push/notifications/register-device-token", async (req, res) => {
   }
 });
 
-router.post("/push/notifications/send", async (req, res) => {
+router.post("/push-notifications/send", async (req, res) => {
   try {
     const { userId, title, message } = req.body;
 
