@@ -47,23 +47,23 @@ const deviceTokens = new Set();
 
 
 
-app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
-  const { deviceToken } = req.body;
-  console.log("✅ device token:", deviceToken);
+// app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
+//   const { deviceToken } = req.body;
+//   console.log("✅ device token:", deviceToken);
 
-  if (!deviceToken) {
-    return res.status(400).json({ message: "Device token is required." });
-  }
+//   if (!deviceToken) {
+//     return res.status(400).json({ message: "Device token is required." });
+//   }
 
-  if (!deviceTokens.has(deviceToken)) {
-    deviceTokens.add(deviceToken);
-    console.log("✅ Registered device token:", deviceToken);
-  } else {
-    console.log("ℹ️ Device token already registered:", deviceToken);
-  }
+//   if (!deviceTokens.has(deviceToken)) {
+//     deviceTokens.add(deviceToken);
+//     console.log("✅ Registered device token:", deviceToken);
+//   } else {
+//     console.log("ℹ️ Device token already registered:", deviceToken);
+//   }
 
-  return res.status(200).json({ message: "Device token registered." });
-});
+//   return res.status(200).json({ message: "Device token registered." });
+// });
 
 
 
