@@ -43,6 +43,7 @@ app.get("/", (req, res) => {
 
 const deviceTokens = new Set();
 
+
 app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
   const { deviceToken } = req.body;
   console.log("✅ device token:", deviceToken);
@@ -60,6 +61,8 @@ app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
 
   return res.status(200).json({ message: "Device token registered." });
 });
+
+
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", verifyToken, userRoutes);
