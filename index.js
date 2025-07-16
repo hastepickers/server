@@ -17,6 +17,7 @@ const riders = require("./routes/Rider/RidersRouter");
 const company = require("./routes/Rider/CompanyRouter");
 const userRiders = require("./routes/Rider/UserRiderRouter");
 const wallet = require("./routes/Rider/WalletRouter");
+const pop = require("./routes/Notifications/Notifications");
 
 dotenv.config();
 
@@ -37,11 +38,13 @@ mongoose
 
 const server = http.createServer(app);
 
+
 app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
 const deviceTokens = new Set();
+
 
 
 app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
@@ -77,7 +80,7 @@ app.use("/api/v1/user/riders", userRiders);
 app.use("/api/v1/wallet/riders", wallet);
 
 app.use("/api/v1/auth/company", company);
-
+app.use("/api/v1/notification", pop);
 messagingSockets(server);
 
 const PORT = process.env.PORT || 4000;
