@@ -731,6 +731,7 @@ const messagingSockets = (server) => {
         });
 
         const customerUserId = updatedRide?.customer?.customerId;
+        console.log(customerUserId, 'customerUserId')
         if (customerUserId) {
           const tokens = await DeviceToken.find({ userId: customerUserId });
           if (tokens.length > 0) {
@@ -835,6 +836,7 @@ const messagingSockets = (server) => {
         });
 
         const customerUserId = updatedRide?.customer?.customerId;
+        console.log(customerUserId, 'customerUserId')
         if (customerUserId) {
           const tokens = await DeviceToken.find({ userId: customerUserId });
           if (tokens.length > 0) {
@@ -937,6 +939,8 @@ const messagingSockets = (server) => {
         });
 
         const customerUserId = updatedRide?.customer?.customerId;
+
+        console.log(customerUserId, 'customerUserId')
         if (customerUserId) {
           const tokens = await DeviceToken.find({ userId: customerUserId });
           if (tokens.length > 0) {
