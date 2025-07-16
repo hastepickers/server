@@ -38,14 +38,11 @@ mongoose
 
 const server = http.createServer(app);
 
-
 app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
 const deviceTokens = new Set();
-
-
 
 // app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
 //   const { deviceToken } = req.body;
@@ -64,8 +61,6 @@ const deviceTokens = new Set();
 
 //   return res.status(200).json({ message: "Device token registered." });
 // });
-
-
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", verifyToken, userRoutes);
