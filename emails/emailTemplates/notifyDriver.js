@@ -1,4 +1,3 @@
-
 const { sendDriverPush } = require("../../utils/sendIOSPush");
 const { capitalize } = require("../../utils/capitalize");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
@@ -37,7 +36,13 @@ const notifyDriver = async (ride, type, driverId) => {
 
     await Promise.all(
       tokens.map(({ deviceToken }) =>
-        sendDriverPush(deviceToken, title, message, payload)
+        sendIOSPush(
+          deviceToken,
+          title,
+          message,
+          payload,
+          process.env.DRIVER_BUNDLE_ID
+        )
       )
     );
   } catch (error) {
