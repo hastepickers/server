@@ -27,4 +27,4 @@ package.json
 package-lock.json
 
 
-certs/*.p8
+certs/*.p8certs/*.p8
