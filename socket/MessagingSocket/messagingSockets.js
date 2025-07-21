@@ -10,6 +10,11 @@ const RiderEarnings = require("../../models/Rider/RiderEarnings");
 const User = require("../../models/Customer/User");
 const { sendIOSPush } = require("../../utils/sendIOSPush");
 const DeviceToken = require("../../models/DeviceToken");
+const { sendEmail } = require("../../utils/emailUtils");
+const { notificationTexts } = require("../../utils/notificationTexts");
+const generateIncomingDispatch = require("../../emails/emailTemplates/IncomingDelivery");
+const notifyUsers = require("../../emails/emailTemplates/notifyUsers");
+
 // Calculate distance between two geographic points using the Haversine formula
 
 async function removeReceivingItemsForRide(rideId) {
@@ -574,7 +579,7 @@ const messagingSockets = (server) => {
             longitude: latestDrop.deliveryLongitude,
           });
           await customerUser.save();
-          console.log("✅ Customer recent delivery location updated.");
+          console.log("Customer recent delivery location updated.");
         }
 
         // Update receivingItems for each delivery in deliveryDropoff
@@ -583,11 +588,11 @@ const messagingSockets = (server) => {
           if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded) {
             if (updatedRide.endRide?.isEnded) {
               console.log(
-                `❕ Skipping delivery for ride ${rideId} as it has ended.`
+                `Skipping delivery for ride ${rideId} as it has ended.`
               );
             } else {
               console.warn(
-                `⚠️ Skipping delivery due to missing receiverUserId: ${JSON.stringify(
+                `Skipping delivery due to missing receiverUserId: ${JSON.stringify(
                   delivery
                 )}`
               );
@@ -599,7 +604,7 @@ const messagingSockets = (server) => {
 
           if (!receiverUser) {
             console.warn(
-              `⚠️ No receiver user found with ID: ${delivery.receiverUserId}. Skipping delivery update for this item.`
+              `No receiver user found with ID: ${delivery.receiverUserId}. Skipping delivery update for this item.`
             );
             continue;
           }
@@ -651,12 +656,11 @@ const messagingSockets = (server) => {
 
           if (!isValid) {
             console.error(
-              "❌ Invalid receivingItemData for user:",
+              "Invalid receivingItemData for user:",
               receiverUser._id,
               "Data:",
               receivingItemData
             );
-            // Log specific missing fields for easier debugging
             if (!receivingItemData.rideId) console.error("   - Missing rideId");
             if (!receivingItemData.deliveryCode)
               console.error("   - Missing deliveryCode");
@@ -693,17 +697,117 @@ const messagingSockets = (server) => {
             continue; // Skip this invalid entry
           }
 
-          // Add the receiving item to the receiver's user document
-          // Ensure the addReceivingItem method in User.js is updated to accept the full receivingItemData object
           if (receiverUser.addReceivingItem) {
             receiverUser.addReceivingItem(receivingItemData);
             await receiverUser.save();
             console.log(
-              `✅ Receiver (${receiverUser._id}) receivingItems updated for delivery code: ${receivingItemData.deliveryCode}.`
+              `Receiver (${receiverUser._id}) receivingItems updated for delivery code: ${receivingItemData.deliveryCode}.`
             );
+
+            const customerUserId = receiverUser?._id;
+            if (customerUserId) {
+              const actualReceiverUser = await User.findById(customerUserId);
+
+              if (!actualReceiverUser) {
+                console.warn(
+                  `Actual receiver user with ID ${customerUserId} not found. Cannot send notifications.`
+                );
+                return;
+              }
+
+              const tokens = await DeviceToken.find({
+                userId: actualReceiverUser._id.toString(),
+              });
+
+              if (tokens.length > 0) {
+                const deviceTokens = tokens.map((t) => t.deviceToken);
+
+                const { title, message, payload } = notificationTexts(
+                  updatedRide
+                ).incomingDelivery(
+                  `${customer.firstName || ""} ${
+                    customer.lastName || ""
+                  }`.trim()
+                );
+
+                const receiverEmail = actualReceiverUser.email;
+
+                // --- THIS IS THE CORRECTED PART ---
+                // Generate the HTML content ONCE for this receiver
+                const htmlEmailContent = await generateIncomingDispatch(
+                  updatedRide,
+                  actualReceiverUser._id.toString()
+                );
+
+                if (!htmlEmailContent) {
+                  console.warn(
+                    `Failed to generate HTML email content for user ${actualReceiverUser._id}. Email will not be sent.`
+                  );
+                }
+
+                for (const token of deviceTokens) {
+                  if (actualReceiverUser.pushNotifications) {
+                    await sendIOSPush(token, title, message, payload);
+                    console.log(
+                      `Push notification sent to device token: ${token} for user ${actualReceiverUser._id}.`
+                    );
+                  } else {
+                    console.log(
+                      `Push notifications disabled for user ${actualReceiverUser._id}. Skipping.`
+                    );
+                  }
+
+                  // Send Email Notification
+                  // Only proceed if HTML content was generated, receiverEmail exists,
+                  // and the user has email notifications enabled.
+                  if (
+                    htmlEmailContent &&
+                    receiverEmail &&
+                    actualReceiverUser.emailNotifications
+                  ) {
+                    const emailSubject = "Your Pickars Delivery is On Its Way!";
+                    const emailTextDescription = `Hi ${
+                      actualReceiverUser.firstName || "there"
+                    },\n\nYour delivery from ${customer.firstName || ""} ${
+                      customer.lastName || ""
+                    } is on its way to ${
+                      receivingItemData.deliveryLocation.address
+                    }.\n\nYour pickup code is: ${
+                      receivingItemData.deliveryCode || "N/A"
+                    }.\n\nTrack your delivery on the Pickars app.\n\nThank you for choosing Pickars!`;
+
+                    await sendEmail(
+                      receiverEmail,
+                      emailSubject,
+                      emailTextDescription,
+                      htmlEmailContent // Pass the already generated HTML content
+                    );
+                    console.log(
+                      `Email notification sent to ${receiverEmail} for user ${actualReceiverUser._id}.`
+                    );
+                  } else {
+                    console.warn(
+                      `Email not sent for user ${actualReceiverUser._id}: HTML content not generated, receiver email missing, or email notifications are disabled for this user.`
+                    );
+                  }
+                }
+
+                console.log(
+                  `Notifications processing complete for user ${actualReceiverUser._id}`
+                );
+              } else {
+                console.warn(
+                  `No device tokens found for user ${customerUserId}. Push notification not sent.`
+                );
+              }
+            } else {
+              console.warn(
+                "No customer userId found for notification purposes."
+              );
+            }
           } else {
             console.warn(
-              `⚠️ User method 'addReceivingItem' not found for user ${receiverUser._id}. Please define it on the User schema.`
+              `User method 'addReceivingItem' not found for user ${receiverUser._id}. Please define it on the User schema.`
             );
           }
         }
@@ -716,7 +820,7 @@ const messagingSockets = (server) => {
             userId: rider._id,
             messages: [],
           }).save();
-          console.log("✅ MessageSupport created.");
+          console.log("MessageSupport created.");
         }
 
         // Emit updated ride to all clients in room
@@ -730,41 +834,15 @@ const messagingSockets = (server) => {
           reportRide: false,
         });
 
-        const customerUserId = updatedRide?.customer?.customerId;
-        console.log(customerUserId, 'customerUserId')
-        if (customerUserId) {
-          const tokens = await DeviceToken.find({ userId: customerUserId });
-          if (tokens.length > 0) {
-            const deviceTokens = tokens.map((t) => t.deviceToken);
+        await notifyUsers(updatedRide, "acceptRide");
 
-            const title = "Driver Accepted Your Ride 🚗";
-            const message =
-              "Your driver is on the way.\nTrack their location in real time.\nTap to view details.";
-            const payload = {
-              screen: "RideDetailsPage",
-              params: { rideId: updatedRide._id.toString() },
-            };
-
-            for (const token of deviceTokens) {
-              await sendIOSPush(token, title, message, payload);
-            }
-
-            console.log(`✅ Push notification sent to user ${customerUserId}`);
-          } else {
-            console.warn(
-              `⚠️ No device tokens found for user ${customerUserId}`
-            );
-          }
-        } else {
-          console.warn("⚠️ No customer userId found in updatedRide.");
-        }
-
-        console.log("✅ acceptRide event completed.");
+        console.log("acceptRide event completed.");
       } catch (err) {
-        console.error("❌ Error in acceptRide handler:", err.message);
+        console.error("Error in acceptRide handler:", err.message);
       }
     });
 
+    // ✅ START RIDE EVENT
     socket.on("startRide", async (payload) => {
       if (!payload) {
         console.error("No data received for startRide event.");
@@ -772,104 +850,58 @@ const messagingSockets = (server) => {
       }
 
       const { rideId, driverId, ride } = payload;
-
-      // Validate payload
       if (!rideId || !driverId || !ride) {
         console.error("Invalid data received for startRide event.", payload);
         return;
       }
 
-      const rideObject = rideId;
-
       try {
-        // Fetch the rider from the database
         const rider = await Rider.findById(driverId);
         if (!rider) {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
 
-        console.log("Rider Details:", rider);
-
-        const rideSocket = await RideSocket.findOneAndUpdate(
+        await RideSocket.findOneAndUpdate(
           { rideId },
           { status: "ongoing" },
-          { new: true } // Returns the updated document
+          { new: true }
         );
 
-        if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
-          return;
-        }
-
-        console.log("RideSocket status updated to 'ongoing':", rideSocket);
-        // Update the ride with startRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
-          rideObject,
-          {
-            "startRide.isStarted": true, // Set startRide to true
-            "startRide.timestamp": new Date(), // Set the current timestamp
-          },
-          { new: true } // Return the updated document
+          rideId,
+          { "startRide.isStarted": true, "startRide.timestamp": new Date() },
+          { new: true }
         );
 
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideObject}`);
+          console.error(`No ride found with ID: ${rideId}`);
           return;
         }
 
-        console.log("Ride updated successfully:", updatedRide);
-
-        // Emit event to notify all users in the ride room
-        io.to(rideObject).emit("rideBooked", {
+        io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
-          rider: rider,
+          rider,
           pairing: false,
-          startRide: true, // Notify that the ride has started
+          startRide: true,
           endRide: false,
           reportRide: false,
           acceptRide: true,
         });
 
-        console.log("Start Ride Event Processed Successfully:", {
-          ride: updatedRide,
-        });
+        console.log("✅ Start Ride Event Processed");
 
-        const customerUserId = updatedRide?.customer?.customerId;
-        console.log(customerUserId, 'customerUserId')
-        if (customerUserId) {
-          const tokens = await DeviceToken.find({ userId: customerUserId });
-          if (tokens.length > 0) {
-            const deviceTokens = tokens.map((t) => t.deviceToken);
-
-            const title = `Your Ride Has Started ✅`;
-            const message = `Your driver has picked you up.\nSit back and enjoy your trip.\nTrack your ride in real-time.`;
-            const payload = {
-              screen: "RideDetailsPage",
-              params: { rideId: updatedRide._id.toString() },
-            };
-
-            for (const token of deviceTokens) {
-              await sendIOSPush(token, title, message, payload);
-            }
-
-            console.log(`✅ Push notification sent to user ${customerUserId}`);
-          } else {
-            console.warn(
-              `⚠️ No device tokens found for user ${customerUserId}`
-            );
-          }
-        } else {
-          console.warn("⚠️ No customer userId found in updatedRide.");
-        }
+        // Notify Users (Customer + Receivers)
+        await notifyUsers(updatedRide, "startRide");
       } catch (error) {
         console.error(
-          `Error processing startRide event for ride ID: ${rideId}`,
+          `❌ Error processing startRide for ride ${rideId}:`,
           error.message
         );
       }
     });
 
+    // ✅ END RIDE EVENT
     socket.on("endRide", async (payload) => {
       if (!payload) {
         console.error("No data received for endRide event.");
@@ -877,39 +909,26 @@ const messagingSockets = (server) => {
       }
 
       const { rideId, driverId, ride } = payload;
-      const rideObject = ride?._id || rideId; // Ensure rideObject uses rideId if ride._id is not present
+      const rideObject = ride?._id || rideId;
 
-      // Validate payload
       if (!rideObject || !driverId) {
         console.error("Invalid data received for endRide event.", payload);
         return;
       }
 
       try {
-        // Fetch the rider from the database
         const rider = await Rider.findById(driverId);
         if (!rider) {
           console.error(`No rider found with ID: ${driverId}`);
           return;
         }
 
-        const rideSocket = await RideSocket.findOneAndDelete({
-          rideId: rideObject,
-        }); // Use rideObject here
+        await RideSocket.findOneAndDelete({ rideId: rideObject });
 
-        if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideObject}`);
-          return;
-        }
-
-        // Update the ride with endRide status
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideObject,
-          {
-            "endRide.isEnded": true, // Set endRide to true
-            "endRide.timestamp": new Date(), // Set the current timestamp
-          },
-          { new: true } // Return the updated document
+          { "endRide.isEnded": true, "endRide.timestamp": new Date() },
+          { new: true }
         );
 
         if (!updatedRide) {
@@ -918,131 +937,120 @@ const messagingSockets = (server) => {
         }
 
         if (updatedRide.totalPrice) {
-          // Check if totalPrice exists before adding earnings
           await addRiderEarnings(driverId, updatedRide.totalPrice);
         }
 
-        // --- NEW LOGIC: Remove receivingItems for this ride from all users ---
         await removeReceivingItemsForRide(rideObject);
-        // --- END NEW LOGIC ---
 
-        // Emit event to notify all users in the ride room
         io.to(rideObject.toString()).emit("rideBooked", {
-          // Ensure rideObject is a string for socket room
           ride: updatedRide,
-          rider: rider,
+          rider,
           pairing: false,
           startRide: true,
-          endRide: true, // Notify that the ride has ended
+          endRide: true,
           reportRide: false,
           acceptRide: true,
         });
 
-        const customerUserId = updatedRide?.customer?.customerId;
+        console.log("✅ End Ride Event Processed");
 
-        console.log(customerUserId, 'customerUserId')
-        if (customerUserId) {
-          const tokens = await DeviceToken.find({ userId: customerUserId });
-          if (tokens.length > 0) {
-            const deviceTokens = tokens.map((t) => t.deviceToken);
-
-            const title = `Your Ride Has Ended 🏁`;
-            const message = `Thank you for riding with us.\nPlease rate your driver now.\nTap to view trip summary.`;
-            const payload = {
-              screen: "RideDetailsPage",
-              params: { rideId: updatedRide._id.toString() },
-            };
-
-            for (const token of deviceTokens) {
-              await sendIOSPush(token, title, message, payload);
-            }
-
-            console.log(`✅ Push notification sent to user ${customerUserId}`);
-          } else {
-            console.warn(
-              `⚠️ No device tokens found for user ${customerUserId}`
-            );
-          }
-        } else {
-          console.warn("⚠️ No customer userId found in updatedRide.");
-        }
-
-        console.log("✅ endRide event completed for ride ID:", rideObject);
+        // Notify Users (Customer + Receivers)
+        await notifyUsers(updatedRide, "endRide");
       } catch (error) {
         console.error(
-          `❌ Error processing endRide event for ride ID: ${rideObject}`,
-          error
+          `❌ Error processing endRide for ride ${rideObject}:`,
+          error.message
         );
       }
     });
+
 
     socket.on("cancelRide", async (payload) => {
       if (!payload) {
-        console.error("No data received for cancelRide event.");
+        console.error("❌ No data received for cancelRide event.");
         return;
       }
-
-      const { rideId } = payload;
-
-      // Validate payload
+    
+      const { rideId, driverId } = payload;
+    
       if (!rideId) {
-        console.error("Invalid data received for cancelRide event.", payload);
+        console.error("❌ Invalid data received for cancelRide event.", payload);
         return;
       }
-
+    
       try {
-        const rideSocket = await RideSocket.findOneAndDelete({ rideId });
-
+        // Fetch ride socket data
+        const rideSocket = await RideSocket.findOne({ rideId });
+    
         if (!rideSocket) {
-          console.error(`No RideSocket entry found with rideId: ${rideId}`);
+          console.error(`❌ No RideSocket found for rideId: ${rideId}`);
           return;
         }
-
-        console.log("RideSocket entry removed successfully:", rideSocket);
-
+    
+        // Determine who cancelled the ride
+        let cancelledBy = "user"; // Default
+        if (driverId && rideSocket.driverId === driverId) {
+          cancelledBy = "driver";
+        }
+    
+        // Update RideSocket status
+        await RideSocket.findOneAndUpdate(
+          { rideId },
+          {
+            status: "cancelled",
+            cancelReason:
+              cancelledBy === "driver"
+                ? "Driver cancelled the ride"
+                : "User requested to cancel",
+            cancelledBy,
+            cancelledAt: new Date(), // Add timestamp
+            cancelledById: driverId || rideSocket.ride?.customerId || null, // Track who cancelled
+          },
+          { new: true }
+        );
+    
+        // Update main ride document
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
           {
-            "cancelRide.isCancelled": true, // Set cancelRide to true
-            "cancelRide.timestamp": new Date(), // Set the current timestamp
+            "cancelRide.isCancelled": true,
+            "cancelRide.timestamp": new Date(),
+            "cancelRide.cancelledBy": cancelledBy,
           },
-          { new: true } // Return the updated document
+          { new: true }
         );
-
+    
         if (!updatedRide) {
-          console.error(`No ride found with ID: ${rideId}`);
+          console.error(`❌ No RequestARide document found for rideId: ${rideId}`);
           return;
         }
-
-        console.log("Ride cancellation processed successfully:", updatedRide);
-
-        // --- NEW LOGIC: Remove receivingItems for this ride from all users ---
+    
+        // Remove receiving items related to this ride
         await removeReceivingItemsForRide(rideId);
-        // --- END NEW LOGIC ---
-
-        // Emit event to notify all users in the ride room
+    
+        // Emit cancellation update to all clients in the ride room
         io.to(rideId.toString()).emit("rideBooked", {
-          // Ensure rideId is a string for socket room
           ride: updatedRide,
           pairing: false,
           startRide: false,
-          endRide: false, // Notify that the ride has not ended
+          endRide: false,
           reportRide: false,
           acceptRide: false,
-          cancelRide: true, // Notify users about the cancellation
+          cancelRide: true,
         });
-
-        console.log(
-          "✅ Cancel Ride Event Processed Successfully for ride ID:",
-          rideId
-        );
+    
+        console.log(`✅ Ride ${rideId} cancelled by ${cancelledBy}`);
+    
+        // Notify users about cancellation
+        await notifyUsers(updatedRide, "cancelRide");
       } catch (error) {
         console.error(
-          `❌ Error processing cancelRide event for ride ID: ${rideId}`,
-          error
+          `❌ Error processing cancelRide for ride ID: ${rideId}`,
+          error.message
         );
       }
     });
+
     socket.on("joinRide", async (rideId) => {
       console.log("user, joinedd", rideId);
       try {

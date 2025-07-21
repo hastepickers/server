@@ -57,35 +57,34 @@ exports.getRidesByStatus = async (req, res) => {
   try {
     const { status } = req.params;
     const driverId = req.riderId;
-    const validStatuses = ["accepted", "ongoing", "pairing"]; // List of valid statuses
 
-    // Check if the provided status is valid
+    // Allow these statuses
+    const validStatuses = ["accepted", "ongoing", "pairing", "cancelled"];
+
+    // Validate status
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
-        message: "Invalid status. Please use 'accepted' or 'ongoing'.",
+        message: "Invalid status. Allowed: accepted, ongoing, pairing, cancelled.",
       });
     }
 
-    // Query to find all rides with the specific driverId and status
+    // Fetch rides based on driverId and status
     const rides = await RideSocket.find({
-      driverId: driverId,
-      status: status,
+      driverId,
+      status,
     }).exec();
 
-    // Return the rides as a response
-    if (rides.length === 0) {
+    if (!rides || rides.length === 0) {
       return res.status(404).json({
         message: `No rides found for driver ${driverId} with status ${status}.`,
         status: 404,
       });
     }
 
-    return res.status(200).json({ rides: rides, success: true });
+    return res.status(200).json({ rides, success: true });
   } catch (error) {
-    console.error("Error fetching rides by driver and status:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error while fetching rides." });
+    console.error("❌ Error fetching rides by driver and status:", error);
+    return res.status(500).json({ message: "Server error while fetching rides." });
   }
 };
 
@@ -135,6 +134,7 @@ exports.getRideSocketLogs = async (req, res) => {
       .json({ message: "Server error", success: false, error: error.message });
   }
 };
+
 // Get a ride by ID
 exports.getRideById = async (req, res) => {
   try {

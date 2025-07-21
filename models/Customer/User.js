@@ -37,6 +37,7 @@ const receivingItemSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+
 const userSchema = new mongoose.Schema({
   firstName: { type: String, required: true, trim: true, lowercase: true },
   lastName: { type: String, required: true, trim: true, lowercase: true },
@@ -54,6 +55,11 @@ const userSchema = new mongoose.Schema({
   emailNotifications: { type: Boolean, default: true },
   promoCode: { type: String },
   pickupCode: { type: Boolean, default: false },
+
+  // ✅ OTP Locking Mechanism
+  loginLock: { type: Boolean, default: false },
+  loginLockUntil: { type: Date, default: null }, // Unlock after 5 hrs
+
   rank: {
     type: String,
     enum: ["Stepper", "Buddy", "Big Stepper", "Governor"],
@@ -78,6 +84,7 @@ const userSchema = new mongoose.Schema({
   },
 });
 
+// ✅ Methods
 userSchema.methods.addRecentDeliveryLocation = function (location) {
   this.recentDeliveryLocations = this.recentDeliveryLocations.filter(
     (loc) =>
@@ -112,7 +119,7 @@ userSchema.methods.addReceivingItem = function (receivingItemData) {
     },
     rideStatus: { isEnded: receivingItemData.rideStatus.isEnded },
     createdAt: receivingItemData.createdAt,
-    receivedAt: new Date(), // Set to current time when received
+    receivedAt: new Date(),
   });
 };
 

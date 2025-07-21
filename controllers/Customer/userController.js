@@ -1,9 +1,11 @@
 const User = require("../../models/Customer/User");
 const Otp = require("../../models/Customer/Otp");
-const otpGenerator = require("otp-generator");
-const mongoose = require("mongoose");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
-// Get user profile data excluding password
+const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
+const { sendEmail } = require("../../utils/emailUtils");
+
+
+
 function capitalize(str) {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -12,7 +14,7 @@ function capitalize(str) {
 const generateOtp = (length) => {
   let otp = "";
   for (let i = 0; i < length; i++) {
-    otp += Math.floor(Math.random() * 10); // Generate a random digit between 0 and 9
+    otp += Math.floor(Math.random() * 10);
   }
   return otp;
 };
@@ -50,8 +52,7 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
     }
 
     // Optionally update user's receivingItems to reflect cleaned data
-    const shouldUpdate =
-      user.receivingItems.length !== validItems.length;
+    const shouldUpdate = user.receivingItems.length !== validItems.length;
 
     if (shouldUpdate) {
       user.receivingItems = validItems;
@@ -65,14 +66,13 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
           if (!ride || !Array.isArray(ride.deliveryDropoff)) return null;
 
           const matchedDropoffs = ride.deliveryDropoff.filter(
-            (drop) =>
-              drop?.receiverUserId?.toString?.() === userId.toString()
+            (drop) => drop?.receiverUserId?.toString?.() === userId.toString()
           );
 
           if (matchedDropoffs.length === 0) return null;
 
           return matchedDropoffs.map((drop) => {
-           // console.log("📦 Matched Dropoff:", drop);
+            // console.log("📦 Matched Dropoff:", drop);
 
             const deliveryCode = drop?.parcelId || item?.deliveryCode || "";
 
@@ -88,10 +88,12 @@ exports.getUserReceivingRidesDetails = async (req, res) => {
                 senderName: `${ride?.customer?.firstName || ""} ${
                   ride?.customer?.lastName || ""
                 }`.trim(),
-                senderPhoneNumber: ride?.customer?.phoneNumber?.startsWith("+234")
+                senderPhoneNumber: ride?.customer?.phoneNumber?.startsWith(
+                  "+234"
+                )
                   ? ride.customer.phoneNumber
                   : "+234" +
-                      (ride?.customer?.phoneNumber?.replace(/^0/, "") || ""),
+                    (ride?.customer?.phoneNumber?.replace(/^0/, "") || ""),
                 pickupAddress: ride?.pickup?.pickupAddress || "",
               },
               rideStatus: {
@@ -269,60 +271,117 @@ exports.getUserProfile = async (req, res) => {
     res.status(500).json({ message: "Error fetching user profile", error });
   }
 };
-// Request OTP to a phone number
 exports.requestOtpForPhoneNumber = async (req, res) => {
-  const { phoneNumber } = req.body; // Extract phone number from request body
-  const userId = req.user.id; // Get user ID from JWT
+  const { phoneNumber } = req.body;
+  const userId = req.user.id;
 
   try {
-    // Check if the user exists
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if the phone number already has an OTP record
     let otpRecord = await Otp.findOne({ phoneNumber });
+    const otp = generateOtp(6);
 
     if (otpRecord) {
-      // If OTP record exists, generate a new OTP and update the existing record
-      const otp = generateOtp(6);
-      otpRecord.otp = otp; // Update the OTP value
+      otpRecord.otp = otp;
       await otpRecord.save();
       console.log("OTP updated for phone number:", phoneNumber);
     } else {
-      // If no OTP record exists, create a new OTP record
-      const otp = generateOtp(6);
       otpRecord = new Otp({ userId, phoneNumber, otp });
       await otpRecord.save();
       console.log("OTP created for phone number:", phoneNumber);
     }
 
-    // Send OTP to the phone number (you would integrate with an SMS service here)
-    // Example: await sendSms(phoneNumber, otp);
+    const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const userEmail = user.email;
+
+    const emailHtml = generateOTPEmail(otp, false, userName);
+    await sendEmail(userEmail, "OTP for Phone Number Verification", emailHtml);
 
     res.status(200).json({ message: "OTP sent successfully" });
   } catch (error) {
-    console.error("Error sending OTP:", error); // Log error
+    console.error("Error sending OTP:", error);
     res.status(500).json({ message: "Error sending OTP", error });
   }
 };
 
-exports.verifyUser = async (req, res) => {
-  const { phoneNumber, otp } = req.body; // Extract phone number and OTP from the request body
+exports.updatePhoneNumberRequest = async (req, res) => {
+  const { newPhoneNumber, oldPhoneNumber } = req.body;
+  const userId = req.user.id;
 
   try {
-    // Check if OTP record exists for the phone number and matches the provided OTP
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const oldOtp = generateOtp(6);
+    const newOtp = generateOtp(6);
+
+    let oldOtpRecord = await Otp.findOneAndUpdate(
+      { phoneNumber: oldPhoneNumber },
+      { otp: oldOtp, userId },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    let newOtpRecord = await Otp.findOneAndUpdate(
+      { phoneNumber: newPhoneNumber },
+      { otp: newOtp, userId },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const userEmail = user.email;
+
+    const oldEmailHtml = generateOTPEmail(
+      oldOtp,
+      false,
+      userName,
+      oldPhoneNumber
+    );
+    await sendEmail(
+      userEmail,
+      "OTP for Old Phone Number Verification",
+      oldEmailHtml
+    );
+
+    const newEmailHtml = generateOTPEmail(
+      newOtp,
+      false,
+      userName,
+      newPhoneNumber
+    );
+    await sendEmail(
+      userEmail,
+      "OTP for New Phone Number Verification",
+      newEmailHtml
+    );
+
+    res.status(200).json({
+      message: "OTPs sent for phone number update",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error in updatePhoneNumberRequest:", error);
+    res
+      .status(500)
+      .json({ message: "Error sending OTP", error: error.message });
+  }
+};
+
+exports.verifyUser = async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+
+  try {
     const otpRecord = await Otp.findOne({ phoneNumber });
     if (!otpRecord || otpRecord.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP", success: false });
     }
 
-    // Delete the OTP record after successful verification
     await Otp.deleteOne({ phoneNumber });
-    console.log(user, "user");
 
-    // Respond with success message, success flag, and tokens
     res.status(200).json({
       message: "OTP verified successfully",
       verified: true,
@@ -335,7 +394,6 @@ exports.verifyUser = async (req, res) => {
   }
 };
 
-// Update user's first name, last name, and country code
 exports.updateUserProfile = async (req, res) => {
   const { firstName, lastName, countryCode, email } = req.body;
   console.log(firstName, lastName, "firstName, lastName");
@@ -356,85 +414,6 @@ exports.updateUserProfile = async (req, res) => {
     res.status(500).json({ message: "Error updating user profile", error });
   }
 };
-
-// Request OTP for updating phone number
-// Request OTP for updating phone number
-// Request OTP for updating phone number
-exports.updatePhoneNumberRequest = async (req, res) => {
-  const { newPhoneNumber, oldPhoneNumber } = req.body;
-  const userId = req.user.id;
-
-  try {
-    // Generate OTPs for both old and new phone numbers
-    const oldOtp = generateOtp(6);
-    const newOtp = generateOtp(6);
-
-    // Check if OTP records already exist for both old and new phone numbers
-    let oldOtpRecord = await Otp.findOne({ phoneNumber: oldPhoneNumber });
-    let newOtpRecord = await Otp.findOne({ phoneNumber: newPhoneNumber });
-
-    // Update or create OTP record for the old phone number
-    if (oldOtpRecord) {
-      oldOtpRecord.otp = oldOtp;
-      await oldOtpRecord.save();
-      console.log(`Updated OTP for old phone number: ${oldOtpRecord}`);
-    } else {
-      oldOtpRecord = new Otp({
-        userId,
-        phoneNumber: oldPhoneNumber,
-        otp: oldOtp,
-      });
-      await oldOtpRecord.save();
-      console.log(`Created OTP for old phone number: ${oldOtpRecord}`);
-    }
-
-    // Update or create OTP record for the new phone number
-    if (newOtpRecord) {
-      newOtpRecord.otp = newOtp;
-      await newOtpRecord.save();
-      console.log(`Updated OTP for new phone number: ${newOtpRecord}`);
-    } else {
-      newOtpRecord = new Otp({
-        userId,
-        phoneNumber: newPhoneNumber,
-        otp: newOtp,
-      });
-      await newOtpRecord.save();
-      console.log(`Created OTP for new phone number: ${newOtpRecord}`);
-    }
-
-    // Optional: Retry logic for sending OTP
-    let smsSent = false;
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    while (!smsSent && attempts < maxAttempts) {
-      try {
-        // Replace with actual SMS sending logic here
-        console.log(`Sending OTP attempt ${attempts + 1}`);
-        smsSent = true; // Assume success for this example
-      } catch (smsError) {
-        attempts++;
-        console.error(`Error sending OTP (attempt ${attempts}):`, smsError);
-        if (attempts >= maxAttempts) {
-          throw new Error("Failed to send OTP after multiple attempts");
-        }
-      }
-    }
-
-    res.status(200).json({
-      message: "OTPs sent for phone number update",
-      success: true,
-    });
-  } catch (error) {
-    console.error("Error in updatePhoneNumberRequest:", error);
-    res
-      .status(500)
-      .json({ message: "Error sending OTP", error: error.message });
-  }
-};
-
-// Verify phone number change
 exports.verifyPhoneNumberChange = async (req, res) => {
   const { oldPhoneNumber, newPhoneNumber, oldOtp, newOtp } = req.body;
   const userId = req.user.id;

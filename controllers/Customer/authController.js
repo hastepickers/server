@@ -1,29 +1,17 @@
-// const User = require("../models/User");
-// const Otp = require("../models/Otp");
 const otpGenerator = require("otp-generator");
 const jwt = require("jsonwebtoken");
 const User = require("../../models/Customer/User");
 const Otp = require("../../models/Customer/Otp");
 const generateTokens = require("../../utils/generateTokens");
-//const CustomerEarning = require("../../models/Customer/CustomerEarnings");
+const { sendEmail } = require("../../utils/emailUtils");
+const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
+const MessageSupport = require("../../models/Customer/MessageSupport"); // Assuming this model exists
+//const CustomerEarning = require("../../models/Customer/CustomerEarnings"); // Uncomment if CustomerEarning is used
 
-/**
- * controllers/authController.js
- *
- * This file contains all the logic for handling user authentication. It includes the following functions:
- *
- * - `register`: Creates a new user after checking if the phone number already exists.
- * - `verifyOtp`: Matches the OTP sent with the one stored in the database and verifies the user.
- * - `login`: Authenticates the user by checking phone number and password.
- * - `resendOtp`: Generates a new OTP and updates it in the OTP schema.
- * - `changePassword`: Updates the user's password by verifying the OTP and phone number.
- *
- * JWT tokens are generated after a successful OTP verification.
- */
 const generateOtp = (length) => {
   let otp = "";
   for (let i = 0; i < length; i++) {
-    otp += Math.floor(Math.random() * 10); // Generate a random digit between 0 and 9
+    otp += Math.floor(Math.random() * 10);
   }
   return otp;
 };
@@ -32,13 +20,11 @@ exports.verifyRefreshToken = (req, res) => {
   const { refreshToken } = req.body;
 
   if (!refreshToken) {
-    return res
-      .status(400)
-      .json({
-        statusCode: 400,
-        success: false,
-        message: "Refresh token is required.",
-      });
+    return res.status(400).json({
+      statusCode: 400,
+      success: false,
+      message: "Refresh token is required.",
+    });
   }
 
   try {
@@ -46,28 +32,48 @@ exports.verifyRefreshToken = (req, res) => {
     return res.status(200).json({ statusCode: 200, success: true, decoded });
   } catch (error) {
     console.error("❌ Invalid Refresh Token:", error.message);
-    return res
-      .status(401)
-      .json({
-        statusCode: 401,
-        success: false,
-        message: "Invalid or expired refresh token.",
-      });
+    return res.status(401).json({
+      statusCode: 401,
+      success: false,
+      message: "Invalid or expired refresh token.",
+    });
   }
 };
 
-// Create User
+
+exports.verifyRefreshTokenDrivers = (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({
+      statusCode: 400,
+      success: false,
+      message: "Refresh token is required.",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET_RIDER);
+    return res.status(200).json({ statusCode: 200, success: true, decoded });
+  } catch (error) {
+    console.error("❌ Invalid Refresh Token:", error.message);
+    return res.status(401).json({
+      statusCode: 401,
+      success: false,
+      message: "Invalid or expired refresh token.",
+    });
+  }
+};
+
 exports.createAccount = async (req, res) => {
   let { firstName, email, referralCode, lastName, phoneNumber, countryCode } =
     req.body;
 
   try {
-    // Convert firstName, lastName, and email to lowercase
     firstName = firstName.toLowerCase();
     lastName = lastName.toLowerCase();
     email = email.toLowerCase();
 
-    // Check if user already exists with the provided phone number
     const existingUser = await User.findOne({ phoneNumber });
     if (existingUser) {
       return res
@@ -75,7 +81,6 @@ exports.createAccount = async (req, res) => {
         .json({ message: "User with this phone number already exists" });
     }
 
-    // Create new user without password as per requirement
     const user = new User({
       firstName,
       lastName,
@@ -87,15 +92,21 @@ exports.createAccount = async (req, res) => {
 
     await user.save();
 
-    // Generate OTP
-    const otp = generateOtp(6);
-    console.log(otp, "Generated OTP");
+    const otpCode = generateOtp(6);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    // Save OTP in the Otp model
-    const otpRecord = new Otp({ phoneNumber, otp });
+    const otpRecord = new Otp({ phoneNumber, otp: otpCode, expiresAt });
     await otpRecord.save();
 
-    // Send OTP to the user's phone (Integration required with SMS service)
+    const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const userEmail = user.email;
+
+    const emailHtml = generateOTPEmail(otpCode, false, userName);
+    await sendEmail(userEmail, "Verify Your Account", emailHtml);
+
+    console.log(
+      `Account created and OTP sent to ${userEmail} with code: ${otpCode}`
+    );
 
     res.status(201).json({
       message: "Account created successfully, OTP sent for verification",
@@ -108,8 +119,6 @@ exports.createAccount = async (req, res) => {
 
 exports.healthCheck = (req, res) => {
   try {
-    // You can add any additional checks here, like checking the DB or other services
-
     res.status(200).send({ message: "Server is active and running" });
   } catch (err) {
     console.error("Error in health check:", err);
@@ -119,51 +128,79 @@ exports.healthCheck = (req, res) => {
 
 exports.login = async (req, res) => {
   const { phoneNumber } = req.body;
-  console.log(phoneNumber, "phoneNumber");
 
   try {
-    // Find the user by phone number
     const user = await User.findOne({ phoneNumber });
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
+    // ✅ Check if account is locked
+    if (user.loginLock) {
+      return res.status(423).json({
+        message:
+          "Account locked due to too many OTP attempts. Try again later.",
+      });
     }
 
-    // Check if an OTP already exists for this phone number
     let otpRecord = await Otp.findOne({ phoneNumber });
+    const currentTime = new Date();
+    const otpCode = generateOtp(6);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min expiry
 
-    let otp;
     if (otpRecord) {
-      // If OTP record exists, update it with a new OTP
-      const otp = generateOtp(6);
-      otpRecord.otp = otp; // Update the OTP
+      // ✅ Reset attempts if more than 3 hours passed
+      const hoursSinceLastAttempt =
+        (currentTime - otpRecord.lastAttemptAt) / (1000 * 60 * 60);
+      if (hoursSinceLastAttempt >= 3) {
+        otpRecord.attempts = 0;
+      }
+
+      // ✅ Check attempts limit
+      if (otpRecord.attempts >= 10) {
+        user.loginLock = true;
+        await user.save();
+        return res.status(423).json({
+          message: "Too many OTP attempts. Account locked for 3 hours.",
+        });
+      }
+
+      otpRecord.otp = otpCode;
+      otpRecord.expiresAt = expiresAt;
+      otpRecord.attempts += 1;
+      otpRecord.lastAttemptAt = currentTime;
       await otpRecord.save();
-      console.log(otp, "Updated OTP");
     } else {
-      // If no OTP record exists, create a new one
-      const otp = generateOtp(6);
-      otpRecord = new Otp({ phoneNumber, otp });
+      otpRecord = new Otp({
+        phoneNumber,
+        otp: otpCode,
+        expiresAt,
+        attempts: 1,
+        lastAttemptAt: currentTime,
+      });
       await otpRecord.save();
-      console.log(otp, "Generated OTP");
     }
 
-    // Send OTP to the user's phone (Integration required with SMS service)
-    // This would be where you integrate with an SMS service like Twilio
+    const emailHtml = generateOTPEmail(
+      otpCode,
+      false,
+      `${user.firstName} ${user.lastName}`
+    );
+    await sendEmail(user.email, "OTP for Verification", emailHtml);
 
+    console.log(`OTP sent for login to ${user.email} with code: ${otpCode}`);
     res.status(200).json({ message: "OTP sent successfully for login" });
   } catch (error) {
     console.error("Error logging in:", error);
     res.status(500).json({ message: "Error logging in", error });
   }
 };
-// Verify user account after OTP validation
+
 const createMessageSupportIfNotExists = async (userId) => {
   try {
     const existingMessageSupport = await MessageSupport.findOne({ userId });
     if (!existingMessageSupport) {
       const messageSupport = new MessageSupport({
         userId,
-        messages: [], // Initialize with an empty message array
+        messages: [],
       });
       await messageSupport.save();
       console.log(
@@ -201,12 +238,10 @@ exports.verifyNewAccount = async (req, res) => {
     //   withdrawalPin: "defaultPin",
     //   userId: user._id,
     // });
-
-    await customerEarning.save();
+    // await customerEarning.save(); // Uncomment if CustomerEarning is used
 
     await Otp.deleteOne({ phoneNumber });
 
-    // Create a MessageSupport document if it doesn't already exist
     await createMessageSupportIfNotExists(user._id);
 
     const { accessToken, refreshToken } = generateTokens(user._id);
@@ -252,7 +287,6 @@ exports.verifyAccount = async (req, res) => {
 
     await Otp.deleteOne({ phoneNumber });
 
-    // Create a MessageSupport document if it doesn't already exist
     await createMessageSupportIfNotExists(user._id);
 
     const { accessToken, refreshToken } = generateTokens(user._id);
@@ -271,108 +305,169 @@ exports.verifyAccount = async (req, res) => {
       .json({ message: "Error verifying account", error, success: false });
   }
 };
+const MAX_OTP_ATTEMPTS = 10;
+const ATTEMPT_WINDOW_HOURS = 3; // Time window to count attempts
+const LOCK_DURATION_HOURS = 5; // Lock account for 5 hours if exceeded attempts
+
 exports.resendOtp = async (req, res) => {
   const { phoneNumber } = req.body;
-  console.log(phoneNumber, "phoneNumber");
+  console.log(phoneNumber, "phoneNumber for resend");
+
   try {
-    // Check if user exists with the given phone number
-    // const user = await User.findOne({ phoneNumber });
+    const user = await User.findOne({ phoneNumber });
 
-    // if (!user) {
+    if (!user) {
+      return res.status(404).json({ message: "User does not exist" });
+    }
 
-    //   return res.status(404).json({ message: "User does not exist" });
-    // }
+    // ✅ Check if user is locked and if lock has expired
+    if (user.loginLock && user.loginLockUntil) {
+      if (new Date() < user.loginLockUntil) {
+        return res.status(423).json({
+          message:
+            "Account locked due to too many OTP attempts. Try again later.",
+        });
+      } else {
+        // Unlock user after lock duration expires
+        user.loginLock = false;
+        user.loginLockUntil = null;
+        await user.save();
+      }
+    }
 
-    // Generate new OTP
-    const otp = generateOtp(6);
-    await Otp.findOneAndUpdate({ phoneNumber }, { otp }, { upsert: true });
+    // ✅ Find or create OTP record
+    let otpRecord = await Otp.findOne({ phoneNumber });
+    const now = new Date();
 
-    console.log(otp, "otp"); // For debugging purposes
+    if (otpRecord) {
+      // Reset attempts if outside the 3-hour window
+      const timeSinceLastAttempt = now - otpRecord.lastAttemptAt;
+      const threeHours = ATTEMPT_WINDOW_HOURS * 60 * 60 * 1000;
 
-    // Send OTP to phone (integration required with SMS service)
-    // Here you would integrate your SMS sending service
-    // e.g., await sendOtpToPhone(phoneNumber, otp);
+      if (timeSinceLastAttempt > threeHours) {
+        otpRecord.attempts = 0; // Reset attempts
+      }
 
-    res.status(200).json({ message: "OTP resent" });
+      otpRecord.attempts += 1;
+      otpRecord.lastAttemptAt = now;
+
+      // ✅ Lock account if attempts exceed MAX_OTP_ATTEMPTS
+      if (otpRecord.attempts > MAX_OTP_ATTEMPTS) {
+        user.loginLock = true;
+        user.loginLockUntil = new Date(
+          Date.now() + LOCK_DURATION_HOURS * 60 * 60 * 1000
+        );
+        await user.save();
+        await otpRecord.save();
+
+        return res.status(423).json({
+          message: "Too many OTP attempts. Account locked for 5 hours.",
+        });
+      }
+    } else {
+      // Create new OTP record if doesn't exist
+      otpRecord = new Otp({
+        phoneNumber,
+        attempts: 1,
+        lastAttemptAt: now,
+      });
+    }
+
+    // ✅ Generate OTP and expiration
+    const otpCode = generateOtp(6);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    otpRecord.otp = otpCode;
+    otpRecord.expiresAt = expiresAt;
+    await otpRecord.save();
+
+    // ✅ Send OTP via email (or SMS)
+    const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const userEmail = user?.email;
+    const emailHtml = generateOTPEmail(otpCode, true, userName);
+    await sendEmail(userEmail, "OTP for Verification", emailHtml);
+
+    console.log(`Resent OTP to ${userEmail} with code: ${otpCode}`);
+    res.status(200).json({ message: "OTP resent successfully" });
   } catch (error) {
+    console.error("Error resending OTP:", error);
     res.status(500).json({ message: "Error resending OTP", error });
   }
 };
 
-// Change Password
-// Change Password
 exports.changePassword = async (req, res) => {
   const { phoneNumber, newPassword, otp } = req.body;
 
   try {
     res.status(200).json({ message: "Password changed successfully" });
   } catch (error) {
-    console.error("Error changing password:", error); // Log the error for debugging
+    console.error("Error changing password:", error);
     res.status(500).json({ message: "Error changing password", error });
   }
 };
-// controllers/authController.js
 
-// Forgot Password
 exports.forgotPassword = async (req, res) => {
   const { phoneNumber } = req.body;
+  console.log(phoneNumber, "phoneNumber for forgot password");
+
   try {
-    // Check if the user exists
     const user = await User.findOne({ phoneNumber });
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
-    // Generate OTP
-    const otp = generateOtp(6);
-    console.log(otp, "otp");
-    const otpRecord = new Otp({ phoneNumber, otp });
-    await otpRecord.save();
+    const otpCode = generateOtp(6);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    // Send OTP to phone (integration required with SMS service)
+    await Otp.findOneAndUpdate(
+      { phoneNumber },
+      { otp: otpCode, expiresAt },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
+    const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const userEmail = user.email;
+
+    const emailHtml = generateOTPEmail(otpCode, false, userName);
+    await sendEmail(userEmail, "Password Reset OTP", emailHtml);
+
+    console.log(
+      `OTP sent for password recovery to ${userEmail} with code: ${otpCode}`
+    );
     res.status(200).json({ message: "OTP sent for password recovery" });
   } catch (error) {
+    console.error("Error sending OTP for password recovery:", error);
     res.status(500).json({ message: "Error sending OTP", error });
   }
 };
 
-// Delete User Account
-// Delete User Account and associated records in RequestARide and DriversMessage
 exports.deleteAccount = async (req, res) => {
   const { phoneNumber } = req.body;
 
   try {
-    // Find the user by phone number
     const user = await User.findOne({ phoneNumber });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Delete associated CustomerEarning record
-    await CustomerEarning.deleteOne({ userId: user._id });
+    // await CustomerEarning.deleteOne({ userId: user._id }); // Uncomment if CustomerEarning is used
+    // await RequestARide.deleteMany({
+    //   $or: [{ "customer.customerId": user._id }, { "rider.userId": user._id }],
+    // });
+    // await DriversMessage.deleteMany({
+    //   $or: [
+    //     { "messages.sender": user._id.toString() },
+    //     { groupId: user._id.toString() },
+    //   ],
+    // });
 
-    // Delete associated RequestARide records (where customerId or rider userId matches the user's ID)
-    await RequestARide.deleteMany({
-      $or: [{ "customer.customerId": user._id }, { "rider.userId": user._id }],
-    });
-
-    // Delete associated DriverMessages where sender or groupId matches the user's ID
-    await DriversMessage.deleteMany({
-      $or: [
-        { "messages.sender": user._id.toString() },
-        { groupId: user._id.toString() },
-      ],
-    });
-
-    // Delete the user account
     await User.deleteOne({ phoneNumber });
 
     res
       .status(200)
       .json({ message: "Account and associated data deleted successfully" });
   } catch (error) {
-    console.error("Error deleting account:", error); // Log the error for debugging
+    console.error("Error deleting account:", error);
     res.status(500).json({ message: "Error deleting account", error });
   }
 };
