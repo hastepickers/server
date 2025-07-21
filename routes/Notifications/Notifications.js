@@ -1,7 +1,11 @@
 const express = require("express");
 const DeviceToken = require("../../models/DeviceToken");
-const { sendIOSPush } = require("../../utils/sendIOSPush");
-const DriverDeviceToken = require('../../models/DriverDeviceToken')
+const {
+
+  sendCustomerPush,
+  sendDriverPush,
+} = require("../../utils/sendIOSPush");
+const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const router = express.Router();
 
 router.post("/push-notifications/register-device-token", async (req, res) => {
@@ -36,38 +40,40 @@ router.post("/push-notifications/register-device-token", async (req, res) => {
   }
 });
 
-router.post("/push-notifications/driver-register-device-token", async (req, res) => {
-  try {
-    const { userId, deviceToken } = req.body;
+router.post(
+  "/push-notifications/driver-register-device-token",
+  async (req, res) => {
+    try {
+      const { userId, deviceToken } = req.body;
 
-    console.log(userId, deviceToken, "userId");
+      console.log(userId, deviceToken, "userId");
 
-    if (!userId || !deviceToken) {
+      if (!userId || !deviceToken) {
+        return res
+          .status(400)
+          .json({ message: "userId and deviceToken are required." });
+      }
+
+      const existing = await DriverDeviceToken.findOne({ userId });
+
+      if (existing) {
+        existing.deviceToken = deviceToken;
+        await existing.save();
+        return res
+          .status(200)
+          .json({ message: "Device token updated successfully." });
+      }
+
+      await DriverDeviceToken.create({ userId, deviceToken });
       return res
-        .status(400)
-        .json({ message: "userId and deviceToken are required." });
+        .status(201)
+        .json({ message: "Device token registered successfully." });
+    } catch (error) {
+      console.error("❌ Error registering device token:", error);
+      return res.status(500).json({ message: "Internal Server Error" });
     }
-
-    const existing = await DriverDeviceToken.findOne({ userId });
-
-    if (existing) {
-      existing.deviceToken = deviceToken;
-      await existing.save();
-      return res
-        .status(200)
-        .json({ message: "Device token updated successfully." });
-    }
-
-    await DriverDeviceToken.create({ userId, deviceToken });
-    return res
-      .status(201)
-      .json({ message: "Device token registered successfully." });
-  } catch (error) {
-    console.error("❌ Error registering device token:", error);
-    return res.status(500).json({ message: "Internal Server Error" });
   }
-});
-
+);
 
 router.post("/push-notifications/send", async (req, res) => {
   try {
@@ -100,7 +106,7 @@ router.post("/push-notifications/send", async (req, res) => {
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendIOSPush(token, title, message, payload,  );
+      const response = await sendCustomerPush(token, title, message, payload);
       responses.push({ token, response });
     }
 
@@ -118,7 +124,6 @@ router.post("/push-notifications/driver-send", async (req, res) => {
   try {
     const { userIds, title, message, screen, params } = req.body;
 
-  
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
       return res.status(400).json({ message: "userIds (array) are required." });
     }
@@ -128,7 +133,6 @@ router.post("/push-notifications/driver-send", async (req, res) => {
         .json({ message: "title and message are required." });
     }
 
-    // Fetch users with matching device tokens
     const users = await DriverDeviceToken.find({ userId: { $in: userIds } });
     if (users.length === 0) {
       return res
@@ -140,12 +144,11 @@ router.post("/push-notifications/driver-send", async (req, res) => {
     const responses = [];
 
     for (const token of tokens) {
-      // ✅ Only include payload if screen or params exist
       const payload =
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendIOSPush(token, title, message, payload);
+      const response = await sendDriverPush(token, title, message, payload);
       responses.push({ token, response });
     }
 

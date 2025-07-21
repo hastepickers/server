@@ -28,3 +28,4 @@ package-lock.json
 
 
 certs/*.p8certs/*.p8
+certs/

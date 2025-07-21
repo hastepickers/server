@@ -8,6 +8,19 @@ const RideSocket = require("../../models/Rider/RideSocket");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
 const { default: mongoose } = require("mongoose");
 // Get Rider's Profile
+const normalizePhoneNumber = (phone) => {
+  if (!phone) return phone;
+
+  phone = phone.trim();
+
+  if (phone.startsWith("+234") || phone.startsWith("234")) {
+    return phone;
+  } else if (phone.startsWith("0")) {
+    return `+234${phone.substring(1)}`;
+  } else {
+    return `+234${phone}`;
+  }
+};
 
 exports.getRiderProfile = async (req, res) => {
   try {
@@ -64,7 +77,8 @@ exports.getRidesByStatus = async (req, res) => {
     // Validate status
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
-        message: "Invalid status. Allowed: accepted, ongoing, pairing, cancelled.",
+        message:
+          "Invalid status. Allowed: accepted, ongoing, pairing, cancelled.",
       });
     }
 
@@ -84,7 +98,9 @@ exports.getRidesByStatus = async (req, res) => {
     return res.status(200).json({ rides, success: true });
   } catch (error) {
     console.error("❌ Error fetching rides by driver and status:", error);
-    return res.status(500).json({ message: "Server error while fetching rides." });
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching rides." });
   }
 };
 
@@ -140,25 +156,39 @@ exports.getRideById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate the ID format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid ride ID format" });
     }
 
-    // Find the ride by ID
     const ride = await RequestARide.findById(id);
 
     if (!ride) {
       return res.status(404).json({ error: "Ride not found" });
     }
-    //console.log(ride, "ride");
+
+    // ✅ Normalize phone numbers
+    if (ride.customer && ride.customer.phoneNumber) {
+      ride.customer.phoneNumber = normalizePhoneNumber(
+        ride.customer.phoneNumber
+      );
+    }
+
+    if (Array.isArray(ride.deliveryDropoff)) {
+      ride.deliveryDropoff = ride.deliveryDropoff.map((drop) => {
+        if (drop.receiverPhoneNumber) {
+          drop.receiverPhoneNumber = normalizePhoneNumber(
+            drop.receiverPhoneNumber
+          );
+        }
+        return drop;
+      });
+    }
+
     res.status(200).json({ success: true, data: ride });
   } catch (error) {
-    //console.error("Error fetching ride by ID:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
-
 // Update Rider's Profile
 exports.updateRiderProfile = async (req, res) => {
   try {

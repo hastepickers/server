@@ -1,4 +1,4 @@
-const generateRideNotification = (ride, status) => {
+const generateRideNotification = (ride, status, recipientType) => {
   if (!ride || !status) {
     console.error("Ride object or status missing");
     return null;
@@ -20,7 +20,6 @@ const generateRideNotification = (ride, status) => {
     ? `₦${ride.totalPrice.toLocaleString()}`
     : "N/A";
 
-  // Generate delivery locations as numbered list/paragraphs
   let deliveryLocationsHtml = "";
   if (ride.deliveryDropoff && ride.deliveryDropoff.length > 0) {
     if (ride.deliveryDropoff.length === 1) {
@@ -53,20 +52,48 @@ const generateRideNotification = (ride, status) => {
     deliveryLocationsHtml = `<p class="paragraph">No delivery locations provided.</p>`;
   }
 
-  // Dynamic text based on ride status
-  let headerText, bodyIntro, instruction;
+  let headerText,
+    bodyIntro,
+    instruction,
+    riderInfoSection = "";
 
   switch (status.toLowerCase()) {
     case "acceptride":
       headerText = "Your Ride Has Been Accepted!";
       bodyIntro = `Great news, ${customerName}! Your delivery request has been accepted.`;
       instruction = `Share the delivery code with the rider when they arrive for pickup.`;
+      // Rider info only relevant for customer on accept/start
+      if (recipientType === "customer") {
+        riderInfoSection = `
+          <h3 style="margin:20px; color: #555555;">Rider's Contact</h3>
+          <div class="driver-info-box">
+            <img src="https://img.icons8.com/ios-filled/50/666666/user.png" alt="Driver Icon" class="driver-icon"/>
+            <div class="driver-details">
+              <span class="driver-name">${riderFullName}</span>
+              <span><a href="tel:${riderPhoneNumber}" class="driver-phone">+234${riderPhoneNumber}</a></span>
+            </div>
+          </div>
+        `;
+      }
       break;
 
     case "startride":
       headerText = "Your Delivery is On the Move!";
       bodyIntro = `Your delivery has started! Rider ${riderFullName} is on the way.`;
       instruction = `Track your delivery and keep this code safe for confirmation.`;
+      // Rider info only relevant for customer on accept/start
+      if (recipientType === "customer") {
+        riderInfoSection = `
+          <h3 style="margin:20px; color: #555555;">Rider's Contact</h3>
+          <div class="driver-info-box">
+            <img src="https://img.icons8.com/ios-filled/50/666666/user.png" alt="Driver Icon" class="driver-icon"/>
+            <div class="driver-details">
+              <span class="driver-name">${riderFullName}</span>
+              <span><a href="tel:${riderPhoneNumber}" class="driver-phone">+234${riderPhoneNumber}</a></span>
+            </div>
+          </div>
+        `;
+      }
       break;
     case "endride":
       headerText = "Delivery Completed Successfully!";
@@ -106,7 +133,7 @@ const generateRideNotification = (ride, status) => {
           padding: 20px;
           text-align: left;
           width: 100%;
-          color: #555555; /* All fonts in gray */
+          color: #555555;
         }
         .container {
           max-width: 600px;
@@ -132,7 +159,7 @@ const generateRideNotification = (ride, status) => {
           align-items: center;
           justify-content: center;
           text-align: center;
-          color: #fff; /* Keep white for contrast on dark banner */
+          color: #fff;
           position: relative;
           margin: 12px 20px;
           border-radius: 12px;
@@ -142,19 +169,19 @@ const generateRideNotification = (ride, status) => {
           border-radius: 6px;
           font-size: 24px;
           font-weight: 700;
-          color: #ffffff; /* Keep white for contrast on dark banner */
+          color: #ffffff;
           max-width: 100%;
           text-align: center;
         }
         .title {
-          color: #555555; /* Changed from red to gray */
+          color: #555555;
           font-size: 24px;
           font-weight: 700;
           margin: 20px;
         }
         .paragraph {
           font-size: 16px;
-          color: #555555; /* Ensure all paragraphs are gray */
+          color: #555555;
           line-height: 1.6;
           margin: 12px 20px;
           text-decoration: none;
@@ -198,27 +225,26 @@ const generateRideNotification = (ride, status) => {
         .driver-name {
           font-size: 16px;
           font-weight: 600;
-          color: #555555; /* Changed to gray */
+          color: #555555;
         }
         .driver-phone {
           font-size: 14px;
-          color: #555555; /* Changed to gray */
+          color: #555555;
           text-decoration: none;
         }
         .footer {
           font-size: 14px;
-          color: #555555; /* Changed to gray */
+          color: #555555;
           margin: 20px;
         }
         .footer-link {
-          color: #555555; /* Changed from red to gray */
+          color: #555555;
           text-decoration: none;
         }
-        /* Removed table specific styles */
         .total-price-display {
           font-weight: bold;
           font-size: 28px;
-          color: #555555; /* Ensure total price is also gray */
+          color: #555555;
           margin: 20px;
        }
       </style>
@@ -230,31 +256,33 @@ const generateRideNotification = (ride, status) => {
   
         <p class="paragraph">Hi ${customerName},</p>
 
-
         <p class="paragraph paragraph-bold">${headerText}</p>
-        <p class="paragraph">Hi ${instruction},</p>
-
-        
+        <p class="paragraph">${instruction}</p>
 
         <p class="paragraph">${bodyIntro}</p>
         <br />
         ${
-          status.toLowerCase() === "cancelride" ||
           status.toLowerCase() === "cancelride"
             ? ""
             : `<p class="paragraph paragraph-bold">Your Pickup Code is</p>
                 <div class="header-banner">
                   <div class="header-text">${deliveryCode}</div>
                 </div>
-                <p class="paragraph"><strong>Pickup Location:</strong> ${pickupLocation}</p>` // Moved pickup location here
+                <p class="paragraph"><strong>Pickup Location:</strong> ${pickupLocation}</p>`
         }
   
         <br />
   
-        ${deliveryLocationsHtml} <!-- Injected numbered delivery locations -->
+        ${deliveryLocationsHtml}
   
-        ${recipientType === "customer" ? `<p class="total-price-display">Total Price: ${totalPrice}</p>` : ""}
-        <!-- Footer with Social Icons -->
+        ${
+          recipientType === "customer"
+            ? `<p class="total-price-display">Total Price: ${totalPrice}</p>`
+            : ""
+        }
+        
+        ${riderInfoSection}
+
         <br />
         <div class="social-icons-container">
           <a href="https://instagram.com/pickars"><img src="https://img.icons8.com/ios/24/666666/instagram-new.png" alt="Instagram" class="social-icon"/></a>
@@ -264,23 +292,10 @@ const generateRideNotification = (ride, status) => {
         </div>
         <br />
   
-
         <p class="paragraph">If you have any questions or concerns, our team is always ready to assist you.</p>
         <p class="paragraph">Your satisfaction is our top priority, and we’re honored to be your trusted delivery partner.</p>
   
         <br />
-        <h3 style="margin:20px; color: #555555;">Rider's Name</h3> <!-- Added new header here -->
-        <div class="driver-info-box">
-          <img src="https://img.icons8.com/ios-filled/50/666666/user.png" alt="Driver Icon" class="driver-icon"/>
-          <div class="driver-details">
-            <span class="driver-name">${riderFullName}</span>
-            <span><a href="tel:${riderPhoneNumber}" class="driver-phone">+234${riderPhoneNumber}</a></span>
-          </div>
-        </div>
-  
-    
-        <br />
-    
         <p class="footer">The Pickars Team</p>
         <p class="footer">
           Got any Issues? Email us at
