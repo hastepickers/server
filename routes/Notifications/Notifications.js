@@ -4,6 +4,7 @@ const {
 
   sendCustomerPush,
   sendDriverPush,
+  sendIOSPush,
 } = require("../../utils/sendIOSPush");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const router = express.Router();
@@ -106,7 +107,7 @@ router.post("/push-notifications/send", async (req, res) => {
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendCustomerPush(token, title, message, payload);
+      const response = await sendIOSPush(token, title, message, payload);
       responses.push({ token, response });
     }
 
@@ -148,7 +149,7 @@ router.post("/push-notifications/driver-send", async (req, res) => {
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendDriverPush(token, title, message, payload);
+      const response = await sendIOSPush(token, title, message, payload,  process.env.DRIVER_BUNDLE_ID);
       responses.push({ token, response });
     }
 

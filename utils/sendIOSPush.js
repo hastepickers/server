@@ -1,81 +1,72 @@
 const apn = require("apn");
 const path = require("path");
-const fs = require("fs");
 require("dotenv").config();
+const fs = require('fs');
+
+const authKeyPath = path.resolve(process.env.APN_KEY_PATH);
+
+const keyId = process.env.KEY_ID;
+const teamId = process.env.TEAM_ID;
+const defaultBundleId = process.env.BUNDLE_ID; // com.pickars.app
+const isProduction = true; // or detect env
+
+if (!keyId || !teamId || !defaultBundleId) {
+  throw new Error("❌ Missing APNs environment variables.");
+}
 
 const isProd = process.env.NODE_ENV === "production";
 
-function createApnProvider(keyPath, keyId, teamId) {
-  const key = fs.readFileSync(path.resolve(keyPath), "utf8");
-  return new apn.Provider({
-    token: { key, keyId, teamId },
-    production: isProd,
-  });
-}
+const key = isProd
+  ? process.env.APN_KEY_CONTENT
+  : fs.readFileSync(path.resolve("certs/AuthKey_5ZG98B43BM.p8"), "utf8");
 
-const customerApnProvider = createApnProvider(
-  process.env.APN_KEY_PATH,
-  process.env.KEY_ID,
-  process.env.TEAM_ID
-);
-const customerBundleId = process.env.BUNDLE_ID;
 
-const driverApnProvider = createApnProvider(
-  process.env.DRIVER_APN_KEY_PATH,
-  process.env.DRIVER_KEY_ID,
-  process.env.TEAM_ID
-);
-const driverBundleId = process.env.DRIVER_BUNDLE_ID;
+const options = {
+  token: {
+    key,
+    keyId,
+    teamId,
+  },
+  production: isProduction,
+};
 
-async function sendCustomerPush(deviceToken, title, message, payload = {}) {
-  return sendPushNotification(
-    customerApnProvider,
-    customerBundleId,
-    deviceToken,
-    title,
-    message,
-    payload
-  );
-}
+const apnProvider = new apn.Provider(options);
 
-async function sendDriverPush(deviceToken, title, message, payload = {}) {
-  return sendPushNotification(
-    driverApnProvider,
-    driverBundleId,
-    deviceToken,
-    title,
-    message,
-    payload
-  );
-}
-
-async function sendPushNotification(
-  provider,
-  bundleId,
+/**
+ * Send iOS Push Notification (supports multiple bundle IDs)
+ * @param {string|string[]} deviceToken
+ * @param {string} title
+ * @param {string} message
+ * @param {Object} [payload={}]
+ * @param {string} [customBundleId] - Optional bundleId (e.g., drivers app)
+ */
+async function sendIOSPush(
   deviceToken,
   title,
   message,
-  payload
+  payload = {},
+  customBundleId
 ) {
   try {
     const notification = new apn.Notification();
+
     notification.alert = { title, body: message };
     notification.sound = "default";
-    notification.topic = bundleId;
+    notification.topic = customBundleId || defaultBundleId; // ✅ Use custom or default
+
     if (Object.keys(payload).length > 0) {
       notification.payload = payload;
     }
+
     const tokens = Array.isArray(deviceToken) ? deviceToken : [deviceToken];
-    const result = await provider.send(notification, tokens);
-    console.log(
-      `✅ Push sent to ${bundleId}:`,
-      JSON.stringify(result, null, 2)
-    );
+    const result = await apnProvider.send(notification, tokens);
+
+    console.log("✅ Push Result:", JSON.stringify(result, null, 2));
     return result;
   } catch (error) {
-    console.error(`❌ Error sending push to ${bundleId}:`, error);
+    console.error("❌ Error sending push:", error);
     throw error;
   }
 }
 
-module.exports = { sendCustomerPush, sendDriverPush };
+module.exports = { sendIOSPush };
