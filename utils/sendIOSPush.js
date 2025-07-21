@@ -13,9 +13,16 @@ if (!keyId || !teamId || !defaultBundleId) {
   throw new Error("❌ Missing APNs environment variables.");
 }
 
+const isProd = process.env.NODE_ENV === "production";
+
+const key = isProd
+  ? process.env.APN_KEY_CONTENT
+  : fs.readFileSync(path.resolve("certs/AuthKey_5ZG98B43BM.p8"), "utf8");
+
+
 const options = {
   token: {
-    key: authKeyPath,
+    key,
     keyId,
     teamId,
   },
@@ -32,7 +39,13 @@ const apnProvider = new apn.Provider(options);
  * @param {Object} [payload={}]
  * @param {string} [customBundleId] - Optional bundleId (e.g., drivers app)
  */
-async function sendIOSPush(deviceToken, title, message, payload = {}, customBundleId) {
+async function sendIOSPush(
+  deviceToken,
+  title,
+  message,
+  payload = {},
+  customBundleId
+) {
   try {
     const notification = new apn.Notification();
 
