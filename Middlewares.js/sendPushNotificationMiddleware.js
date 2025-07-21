@@ -1,5 +1,5 @@
 const DeviceToken = require("../models/DeviceToken");
-const { sendIOSPush } = require("../utils/sendIOSPush");
+const { sendCustomerPush } = require("../utils/sendIOSPush");
 
 /**
  * Middleware for sending push notifications
@@ -37,7 +37,7 @@ const sendPushNotificationMiddleware = async (req, res, next) => {
 
     const responses = [];
     for (const token of tokens) {
-      const response = await sendIOSPush(token, title, message, payload);
+      const response = await sendCustomerPush(token, title, message, payload);
       responses.push({ token, response });
     }
 

@@ -8,12 +8,13 @@ const Rider = require("../../models/Rider/RiderSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 const RiderEarnings = require("../../models/Rider/RiderEarnings");
 const User = require("../../models/Customer/User");
-const { sendIOSPush } = require("../../utils/sendIOSPush");
+const { sendCustomerPush } = require("../../utils/sendIOSPush");
 const DeviceToken = require("../../models/DeviceToken");
 const { sendEmail } = require("../../utils/emailUtils");
 const { notificationTexts } = require("../../utils/notificationTexts");
 const generateIncomingDispatch = require("../../emails/emailTemplates/IncomingDelivery");
 const notifyUsers = require("../../emails/emailTemplates/notifyUsers");
+const notifyDriver = require("../../emails/emailTemplates/notifyDriver");
 
 // Calculate distance between two geographic points using the Haversine formula
 
@@ -400,7 +401,6 @@ const messagingSockets = (server) => {
         });
       }
     });
-    // O
 
     socket.on("supportMessaging", async (userId, type) => {
       try {
@@ -747,7 +747,7 @@ const messagingSockets = (server) => {
 
                 for (const token of deviceTokens) {
                   if (actualReceiverUser.pushNotifications) {
-                    await sendIOSPush(token, title, message, payload);
+                    await sendCustomerPush(token, title, message, payload);
                     console.log(
                       `Push notification sent to device token: ${token} for user ${actualReceiverUser._id}.`
                     );
@@ -964,7 +964,6 @@ const messagingSockets = (server) => {
       }
     });
 
-
     socket.on("cancelRide", async (payload) => {
       if (!payload) {
         console.error("❌ No data received for cancelRide event.");
@@ -979,7 +978,6 @@ const messagingSockets = (server) => {
       }
     
       try {
-        // Fetch ride socket data
         const rideSocket = await RideSocket.findOne({ rideId });
     
         if (!rideSocket) {
@@ -987,7 +985,6 @@ const messagingSockets = (server) => {
           return;
         }
     
-        // Determine who cancelled the ride
         let cancelledBy = "user"; // Default
         if (driverId && rideSocket.driverId === driverId) {
           cancelledBy = "driver";
@@ -1003,8 +1000,8 @@ const messagingSockets = (server) => {
                 ? "Driver cancelled the ride"
                 : "User requested to cancel",
             cancelledBy,
-            cancelledAt: new Date(), // Add timestamp
-            cancelledById: driverId || rideSocket.ride?.customerId || null, // Track who cancelled
+            cancelledAt: new Date(),
+            cancelledById: driverId || rideSocket.ride?.customerId || null,
           },
           { new: true }
         );
@@ -1041,33 +1038,32 @@ const messagingSockets = (server) => {
     
         console.log(`✅ Ride ${rideId} cancelled by ${cancelledBy}`);
     
-        // Notify users about cancellation
+        // ✅ Notify users about cancellation
         await notifyUsers(updatedRide, "cancelRide");
+    
+        // ✅ Notify driver if the user cancelled the ride
+        if (cancelledBy === "user" && rideSocket.driverId) {
+          await notifyDriver(updatedRide, "cancelRide", rideSocket.driverId);
+          console.log(`✅ Driver ${rideSocket.driverId} notified about cancellation`);
+        }
       } catch (error) {
-        console.error(
-          `❌ Error processing cancelRide for ride ID: ${rideId}`,
-          error.message
-        );
+        console.error(`❌ Error processing cancelRide for ride ID: ${rideId}`, error.message);
       }
     });
 
     socket.on("joinRide", async (rideId) => {
-      console.log("user, joinedd", rideId);
+      console.log("user joined", rideId);
       try {
         const ride = await RequestARide.findById(rideId).populate(
           "rider.userId customer.customerId"
         );
+
         if (!ride) {
           console.log("No ride found with that ID");
           return;
         }
 
-        const {
-          pickup: { pickupLatitude, pickupLongitude },
-        } = ride;
-
-        const { pickup, deliveryDropoff } = ride;
-
+        const { pickupLatitude, pickupLongitude } = ride?.pickup || {};
         if (!pickupLatitude || !pickupLongitude) {
           console.log("Invalid pickup location in ride details");
           socket.emit("rideError", {
@@ -1078,28 +1074,17 @@ const messagingSockets = (server) => {
 
         socket.join(rideId);
 
-        const use = "6777ce3701ac7202127a0e6e";
-        // Notify the closest rider specifically
-
         try {
-          // Fetch closest riders
-          const closestRiders = await Rider.findById(use); // Replace with actual logic to fetch multiple riders if applicable
-          if (!closestRiders) {
-            console.error("No riders found");
+          const closestRider = await Rider.findById("6777ce3701ac7202127a0e6e"); // Replace with real logic later
+          if (!closestRider) {
+            console.error("No rider found");
             socket.emit("joinedRide", {
-              message: "No riders found",
+              message: "No rider found",
               error: true,
             });
-            return; // Exit early if no riders are found
+            return;
           }
 
-          console.log(closestRiders, "closestRiders");
-
-          // Emit closest riders to the socket
-          socket.emit("closestRiders", { riders: closestRiders });
-
-          // Select the first closest rider (replace with your own logic if needed)
-          const closestRider = closestRiders; // Adjust based on data structure
           console.log(closestRider, "closestRider");
 
           // Emit ride booking details to relevant sockets
@@ -1113,38 +1098,34 @@ const messagingSockets = (server) => {
             reportRide: ride?.startRide?.reportRide,
           });
 
-          // Notify the selected closest rider
-          io.to(use).emit("riderJoined", {
+          // Notify the selected rider
+          io.to(closestRider._id.toString()).emit("riderJoined", {
             message: `Ride booked!`,
             rideDetails: closestRider,
             error: false,
             rideId,
             ride,
-            driverId: use,
-            pickup: pickup,
-            deliveryDropoff: deliveryDropoff,
+            driverId: closestRider._id.toString(),
+            pickup: ride.pickup,
+            deliveryDropoff: ride.deliveryDropoff,
             status: "pairing",
           });
 
-          // Save the emitted data into the database
-          // Save the emitted data into the database
+          // ✅ Notify Driver via Push Notification
+          await notifyDriver(ride, "pickupAlert", closestRider?._id?.toString());
+
+          // ✅ Save ride socket data
           const rideSocketData = new RideSocket({
             rideId,
-            // rideDetails: closestRider,
             ride,
-            driverId: use,
-            pickup,
-            deliveryDropoff,
+            driverId: closestRider._id.toString(),
+            pickup: ride.pickup,
+            deliveryDropoff: ride.deliveryDropoff,
             status: "pairing",
           });
 
-          try {
-            await rideSocketData.save(); // Attempt to save the ride socket data
-            console.log("RideSocket data saved successfully:", rideSocketData);
-          } catch (error) {
-            // Handle errors during save operation
-            console.error("Error saving rideSocket data:", error.message);
-          }
+          await rideSocketData.save();
+          console.log("RideSocket data saved successfully:", rideSocketData);
         } catch (error) {
           console.error("Error fetching rider details:", error.message);
           socket.emit("joinedRide", {
