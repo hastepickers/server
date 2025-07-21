@@ -35,7 +35,10 @@ const RideSocketSchema = new mongoose.Schema(
           type: String,
           required: false,
           default: function () {
-            return Math.random().toString(36).substr(2, 12).toUpperCase(); // Generate random parcel ID
+            return Math.random()
+              .toString(36)
+              .substr(2, 12)
+              .toUpperCase(); // Generate random parcel ID
           },
         },
         receiverName: { type: String, required: true },
@@ -57,7 +60,16 @@ const RideSocketSchema = new mongoose.Schema(
       type: String,
       required: true,
       default: "pairing",
-      enum: ["pairing", "accepted", "ongoing"],
+      enum: ["pairing", "accepted", "ongoing", "completed", "cancelled"], // ✅ Added "cancelled" and "completed"
+    },
+    cancelReason: {
+      type: String,
+      required: false,
+    },
+    cancelledBy: {
+      type: String, // could be "driver" or "user"
+      enum: ["driver", "user"],
+      required: false,
     },
   },
   { timestamps: true }

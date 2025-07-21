@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 
 // Secret keys
 const COMPANY_SECRET = "yourCompanySecretKey";
-const RIDER_SECRET = "yourRiderSecretKey";
+const RIDER_SECRET = process.env.JWT_SECRET_RIDER;
 
 // Generate company token
 exports.generateCompanyToken = (companyId) => {
