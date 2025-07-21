@@ -1,6 +1,7 @@
 const apn = require("apn");
 const path = require("path");
 require("dotenv").config();
+const fs = require('fs');
 
 const authKeyPath = path.resolve(process.env.APN_KEY_PATH);
 

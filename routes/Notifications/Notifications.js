@@ -100,7 +100,7 @@ router.post("/push-notifications/send", async (req, res) => {
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendIOSPush(token, title, message, payload, 'com.pickarsDrivers.app' );
+      const response = await sendIOSPush(token, title, message, payload,  );
       responses.push({ token, response });
     }
 
