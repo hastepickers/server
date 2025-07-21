@@ -2,7 +2,7 @@ const User = require("../../models/Customer/User");
 const DeviceToken = require("../../models/DeviceToken");
 const { sendEmail } = require("../../utils/emailUtils");
 const { notificationTexts } = require("../../utils/notificationTexts");
-const { sendCustomerPush } = require("../../utils/sendIOSPush");
+const { sendIOSPush } = require("../../utils/sendIOSPush");
 const generateRideNotification = require("./generateRideNotification");
 
 const notifyUsers = async (updatedRide, status) => {
@@ -29,7 +29,7 @@ const notifyUsers = async (updatedRide, status) => {
         const deviceTokens = tokens.map((t) => t.deviceToken);
         await Promise.all(
           deviceTokens.map((token) =>
-          sendCustomerPush(token, title, message, pushPayload)
+            sendIOSPush(token, title, message, pushPayload)
           )
         );
       }
