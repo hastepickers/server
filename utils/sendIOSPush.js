@@ -2,7 +2,7 @@ const apn = require("apn");
 const path = require("path");
 require("dotenv").config();
 
-const authKeyPath = path.resolve(__dirname, "../certs/AuthKey_5ZG98B43BM.p8");
+const authKeyPath = path.resolve(process.env.APN_KEY_PATH);
 
 const keyId = process.env.KEY_ID;
 const teamId = process.env.TEAM_ID;
