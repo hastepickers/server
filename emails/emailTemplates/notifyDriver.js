@@ -30,10 +30,10 @@ const notifyDriver = async (ride, type, driverId) => {
 
     const tokens = await DriverDeviceToken.find({
       userId: driverId,
-      platform: "ios",
     });
     if (tokens.length === 0) return;
 
+    console.log(deviceToken, 'deviceTokendeviceToken')
     await Promise.all(
       tokens.map(({ deviceToken }) =>
         sendIOSPush(
