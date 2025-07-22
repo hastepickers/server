@@ -46,7 +46,13 @@ const notifyUsers = async (updatedRide, status) => {
         await Promise.all(
           deviceTokens.map(async (token) => {
             console.log(`📲 Sending push to token: ${token}`);
-            await sendIOSPush(token, title, message, pushPayload);
+            await sendIOSPush(
+              token,
+              title,
+              message,
+              pushPayload,
+              process.env.BUNDLE_ID
+            );
             console.log(`✅ Push sent to token: ${token}`);
           })
         );
