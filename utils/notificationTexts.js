@@ -30,9 +30,17 @@ function notificationTexts(ride) {
       payload,
     },
 
+    cancelRide: {
+      title: "Ride Cancelled",
+      message: `The ride has been cancelled. If you have any questions, please contact support.`,
+      payload,
+    },
+
     incomingDelivery: (customerName) => ({
       title: `Dispatch Incoming`,
-      message: `Incoming Dispatch from ${capitalize(customerName)}, our Dispatch Rider is heading to pick up your parcel. They will deliver it to you shortly.`,
+      message: `Incoming Dispatch from ${capitalize(
+        customerName
+      )}, our Dispatch Rider is heading to pick up your parcel. They will deliver it to you shortly.`,
       payload,
     }),
   };

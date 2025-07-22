@@ -8,7 +8,7 @@ const Rider = require("../../models/Rider/RiderSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 const RiderEarnings = require("../../models/Rider/RiderEarnings");
 const User = require("../../models/Customer/User");
-const { sendCustomerPush, sendIOSPush } = require("../../utils/sendIOSPush");
+const { sendIOSPush } = require("../../utils/sendIOSPush");
 const DeviceToken = require("../../models/DeviceToken");
 const { sendEmail } = require("../../utils/emailUtils");
 const { notificationTexts } = require("../../utils/notificationTexts");
@@ -749,7 +749,13 @@ const messagingSockets = (server) => {
 
                 for (const token of deviceTokens) {
                   if (actualReceiverUser.pushNotifications) {
-                    await sendCustomerPush(token, title, message, payload);
+                    await sendIOSPush(
+                      token,
+                      title,
+                      message,
+                      payload,
+                      process.env.BUNDLE_ID
+                    );
                     console.log(
                       `Push notification sent to device token: ${token} for user ${actualReceiverUser._id}.`
                     );
@@ -762,6 +768,7 @@ const messagingSockets = (server) => {
                   // Send Email Notification
                   // Only proceed if HTML content was generated, receiverEmail exists,
                   // and the user has email notifications enabled.
+
                   if (
                     htmlEmailContent &&
                     receiverEmail &&
@@ -1046,11 +1053,12 @@ const messagingSockets = (server) => {
         console.log(`✅ Ride ${rideId} cancelled by ${cancelledBy}`);
 
         // ✅ Notify users about cancellation
-      
+        await notifyUsers(updatedRide, "cancelRide");
 
         // ✅ Notify driver if the user cancelled the ride
         if (cancelledBy === "user" && rideSocket.driverId) {
-         ;
+          await notifyDriver(updatedRide, "cancelRide", rideSocket.driverId);
+
           console.log(
             `✅ Driver ${rideSocket.driverId} notified about cancellation`
           );
