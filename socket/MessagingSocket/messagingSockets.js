@@ -18,18 +18,13 @@ const notifyDriver = require("../../emails/emailTemplates/notifyDriver");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
 
-// Calculate distance between two geographic points using the Haversine formula
-
 async function removeReceivingItemsForRide(rideId) {
   try {
-    // Find all users who have any receivingItem with the given rideId
     const usersToUpdate = await User.find({ "receivingItems.rideId": rideId });
-
     if (usersToUpdate.length === 0) {
       console.log(`No users found with receivingItems for rideId: ${rideId}`);
       return;
     }
-
     for (const user of usersToUpdate) {
       const initialCount = user.receivingItems.length;
       user.receivingItems = user.receivingItems.filter(
@@ -56,7 +51,6 @@ const addRiderEarnings = async (riderId, fare) => {
       return;
     }
 
-    // Fetch the rider
     const rider = await Rider.findById(riderId);
     if (!rider) {
       console.error(`❌ Rider not found with ID: ${riderId}`);
@@ -98,10 +92,8 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c; // Distance in kilometers
 };
 
-// Convert degrees to radians
 const degToRad = (deg) => deg * (Math.PI / 180);
 
-// Fetch the closest riders based on pickup location
 const getClosestRiders = async (pickupLatitude, pickupLongitude) => {
   try {
     const riders = await Rider.find().limit(6).exec();
@@ -1188,6 +1180,7 @@ const messagingSockets = (server) => {
               )
             )
           );
+          
           console.log("Push notifications sent to driver:", driverIdForPush);
 
           const rideSocketData = new RideSocket({

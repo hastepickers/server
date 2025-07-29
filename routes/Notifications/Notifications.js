@@ -1,7 +1,6 @@
 const express = require("express");
 const DeviceToken = require("../../models/DeviceToken");
 const {
-
   sendCustomerPush,
   sendDriverPush,
   sendIOSPush,
@@ -9,11 +8,17 @@ const {
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const router = express.Router();
 
+// ---------------------------
+// iOS ROUTES
+// ---------------------------
 router.post("/push-notifications/register-device-token", async (req, res) => {
   try {
-    const { userId, deviceToken } = req.body;
+    let { userId, deviceToken, platform } = req.body;
 
-    console.log(userId, deviceToken, "userId");
+    console.log(userId, deviceToken, platform, "registering iOS user");
+
+    // ✅ Force platform to iOS
+    platform = "ios";
 
     if (!userId || !deviceToken) {
       return res
@@ -25,18 +30,19 @@ router.post("/push-notifications/register-device-token", async (req, res) => {
 
     if (existing) {
       existing.deviceToken = deviceToken;
+      existing.platform = platform;
       await existing.save();
       return res
         .status(200)
-        .json({ message: "Device token updated successfully." });
+        .json({ message: "iOS Device token updated successfully." });
     }
 
-    await DeviceToken.create({ userId, deviceToken });
+    await DeviceToken.create({ userId, deviceToken, platform });
     return res
       .status(201)
-      .json({ message: "Device token registered successfully." });
+      .json({ message: "iOS Device token registered successfully." });
   } catch (error) {
-    console.error("❌ Error registering device token:", error);
+    console.error("❌ Error registering iOS device token:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
@@ -45,9 +51,12 @@ router.post(
   "/push-notifications/driver-register-device-token",
   async (req, res) => {
     try {
-      const { userId, deviceToken } = req.body;
+      let { userId, deviceToken, platform } = req.body;
 
-      console.log(userId, deviceToken, "userId");
+      console.log(userId, deviceToken, platform, "registering iOS driver");
+
+      // ✅ Force platform to iOS
+      platform = "ios";
 
       if (!userId || !deviceToken) {
         return res
@@ -59,18 +68,104 @@ router.post(
 
       if (existing) {
         existing.deviceToken = deviceToken;
+        existing.platform = platform;
         await existing.save();
         return res
           .status(200)
-          .json({ message: "Device token updated successfully." });
+          .json({ message: "iOS Driver device token updated successfully." });
       }
 
-      await DriverDeviceToken.create({ userId, deviceToken });
+      await DriverDeviceToken.create({ userId, deviceToken, platform });
       return res
         .status(201)
-        .json({ message: "Device token registered successfully." });
+        .json({ message: "iOS Driver device token registered successfully." });
     } catch (error) {
-      console.error("❌ Error registering device token:", error);
+      console.error("❌ Error registering iOS driver device token:", error);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  }
+);
+
+// ---------------------------
+// ANDROID ROUTES
+// ---------------------------
+router.post(
+  "/push-notifications/android/register-device-token",
+  async (req, res) => {
+    try {
+      let { userId, deviceToken } = req.body;
+
+      console.log(userId, deviceToken, "registering Android user");
+
+      // ✅ Force platform to Android
+      const platform = "android";
+
+      if (!userId || !deviceToken) {
+        return res
+          .status(400)
+          .json({ message: "userId and deviceToken are required." });
+      }
+
+      const existing = await DeviceToken.findOne({ userId });
+
+      if (existing) {
+        existing.deviceToken = deviceToken;
+        existing.platform = platform;
+        await existing.save();
+        return res
+          .status(200)
+          .json({ message: "Android Device token updated successfully." });
+      }
+
+      await DeviceToken.create({ userId, deviceToken, platform });
+      return res
+        .status(201)
+        .json({ message: "Android Device token registered successfully." });
+    } catch (error) {
+      console.error("❌ Error registering Android device token:", error);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  }
+);
+
+router.post(
+  "/push-notifications/android/driver-register-device-token",
+  async (req, res) => {
+    try {
+      let { userId, deviceToken } = req.body;
+
+      console.log(userId, deviceToken, "registering Android driver");
+
+      // ✅ Force platform to Android
+      const platform = "android";
+
+      if (!userId || !deviceToken) {
+        return res
+          .status(400)
+          .json({ message: "userId and deviceToken are required." });
+      }
+
+      const existing = await DriverDeviceToken.findOne({ userId });
+
+      if (existing) {
+        existing.deviceToken = deviceToken;
+        existing.platform = platform;
+        await existing.save();
+        return res
+          .status(200)
+          .json({
+            message: "Android Driver device token updated successfully.",
+          });
+      }
+
+      await DriverDeviceToken.create({ userId, deviceToken, platform });
+      return res
+        .status(201)
+        .json({
+          message: "Android Driver device token registered successfully.",
+        });
+    } catch (error) {
+      console.error("❌ Error registering Android driver device token:", error);
       return res.status(500).json({ message: "Internal Server Error" });
     }
   }
@@ -149,7 +244,7 @@ router.post("/push-notifications/driver-send", async (req, res) => {
         screen || params ? { screen, params: params || {} } : undefined;
 
       console.log(token, title, message, payload);
-      const response = await sendIOSPush(token, title, message, payload,  process.env.DRIVER_BUNDLE_ID);
+      const response = await sendIOSPush(token, title, message, payload);
       responses.push({ token, response });
     }
 

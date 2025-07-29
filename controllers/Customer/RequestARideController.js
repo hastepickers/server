@@ -107,7 +107,7 @@ exports.calculateTotalDistance = async (req, res) => {
         type: "bike",
         priceBeforeDiscount: 3500,
         discountPercent: 15,
-        price: 2975,
+        price: 1975,
         off: 525,
         description: "Standard delivery with 15% discount.",
       },
@@ -117,7 +117,7 @@ exports.calculateTotalDistance = async (req, res) => {
         type: "bike",
         priceBeforeDiscount: 8000,
         discountPercent: 5,
-        price: 7600,
+        price: 4600,
         off: 400,
         description: "Urgent delivery with 5% discount.",
       },
@@ -272,7 +272,7 @@ exports.bookARide = async (req, res) => {
     // 3. Generate pickupCode
     const pickupCode = generateCustomCode(customer.firstName);
 
-    // 4. Normalize delivery dropoffs
+    // 4. Clean and normalize delivery drop-offs (remove any incoming id)
     const cleanedDropoffs = deliveryDropoff.map((drop, index) => {
       if (
         !drop.deliveryLatitude ||
@@ -296,19 +296,24 @@ exports.bookARide = async (req, res) => {
           drop.receiverUserId && drop.receiverUserId !== ""
             ? drop.receiverUserId
             : undefined,
-        items: drop.items || [],
-        parcelId: uuidv4().split("-")[0].toUpperCase(), // Short UUID
-        deliveryCode: pickupCode, // Same as pickupCode
+        items: Array.isArray(drop.items) ? drop.items : [],
+        parcelId: uuidv4().split("-")[0].toUpperCase(), // Short unique code for package
+        deliveryCode: pickupCode, // Same as pickup code for tracking
       };
     });
 
-    // 5. Build full ride object
+    // 5. Clean pickup object (remove id if present)
+    const cleanedPickup = {
+      pickupLatitude: pickup.pickupLatitude,
+      pickupLongitude: pickup.pickupLongitude,
+      pickupAddress: pickup.pickupAddress,
+      pickupCode: pickupCode,
+    };
+
+    // 6. Build new ride request object
     const newRideRequest = new RequestARide({
       deliveryDropoff: cleanedDropoffs,
-      pickup: {
-        ...pickup,
-        pickupCode: pickupCode,
-      },
+      pickup: cleanedPickup,
       typeOfVehicle,
       totalPrice,
       customer: {
@@ -321,7 +326,7 @@ exports.bookARide = async (req, res) => {
       },
     });
 
-    // 6. Save and respond
+    // 7. Save to DB
     await newRideRequest.save();
 
     return res.status(201).json({

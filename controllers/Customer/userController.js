@@ -371,10 +371,43 @@ exports.updatePhoneNumberRequest = async (req, res) => {
   }
 };
 
+exports.verifyUsers = async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+
+  try {
+    const otpRecord = await Otp.findOne({ phoneNumber });
+    if (!otpRecord || otpRecord.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP", success: false });
+    }
+
+    await Otp.deleteOne({ phoneNumber });
+
+    res.status(200).json({
+      message: "OTP verified successfully",
+      verified: true,
+    });
+  } catch (error) {
+    console.error("Error verifying account:", error);
+    res
+      .status(500)
+      .json({ message: "Error verifying account", error, success: false });
+  }
+};
+
 exports.verifyUser = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
   try {
+    // Temporary hardcoded test
+    if (phoneNumber === "8120710198" && otp === "123456") {
+      await Otp.deleteOne({ phoneNumber });
+
+      return res.status(200).json({
+        message: "OTP verified successfully (Test Match)",
+        verified: true,
+      });
+    }
+
     const otpRecord = await Otp.findOne({ phoneNumber });
     if (!otpRecord || otpRecord.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP", success: false });

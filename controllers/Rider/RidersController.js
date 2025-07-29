@@ -96,9 +96,61 @@ exports.sendOtp = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { phoneNumber, otp } = req.body;
+
+    console.log(phoneNumber,'phoneNumberphoneNumber')
+    // Temporary test validation
+    if (phoneNumber === "8120710198" && otp === "123456") {
+      let rider = await Rider.findOne({ phoneNumber });
+      if (!rider) {
+        rider = new Rider({ phoneNumber });
+        await rider.save();
+      }
+
+      const { accessToken, refreshToken } = generateRiderToken(rider._id);
+
+      return res.status(200).json({
+        message: "OTP verified successfully (Test Match)",
+        accessToken,
+        refreshToken,
+        user: rider,
+        success: true,
+      });
+    }
+
+    const riderOtp = await RiderOtp.findOne({ phoneNumber });
+    if (!riderOtp || riderOtp.otp !== otp) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired OTP", success: false });
+    }
+
+    let rider = await Rider.findOne({ phoneNumber });
+    if (!rider) {
+      rider = new Rider({ phoneNumber });
+      await rider.save();
+    }
+
+    const { accessToken, refreshToken } = generateRiderToken(rider._id);
+
+    res.status(200).json({
+      message: "OTP verified successfully",
+      accessToken,
+      refreshToken,
+      user: rider,
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message, success: false });
+  }
+};
+
 // Verify OTP
 // Verify OTP and Login
-exports.verifyOtp = async (req, res) => {
+exports.verifyOtps = async (req, res) => {
   try {
     const { phoneNumber, otp } = req.body;
     console.log(phoneNumber, otp, "phoneNumber new");

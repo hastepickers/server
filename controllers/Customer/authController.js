@@ -259,6 +259,78 @@ exports.verifyAccount = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
   try {
+    // ✅ Hardcoded auto-verification for test/demo purposes
+    if (phoneNumber === "8120710198" && otp === "123456") {
+      let user = await User.findOne({ phoneNumber });
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found", success: false });
+      }
+
+      if (!user.verified) {
+        user.verified = true;
+        await user.save();
+        await createMessageSupportIfNotExists(user._id);
+      }
+
+      const { accessToken, refreshToken } = generateTokens(user._id);
+
+      return res.status(200).json({
+        message: "Account verified successfully (hardcoded route)",
+        success: true,
+        accessToken,
+        refreshToken,
+        user,
+      });
+    }
+
+    // 🔒 Default verification flow
+    const otpRecord = await Otp.findOne({ phoneNumber });
+    if (!otpRecord || otpRecord.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP", success: false });
+    }
+
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(404).json({ message: "User not found", success: false });
+    }
+
+    if (user.verified) {
+      const { accessToken, refreshToken } = generateTokens(user._id);
+      return res.status(200).json({
+        message: "Account is already verified",
+        success: true,
+        accessToken,
+        refreshToken,
+        user,
+      });
+    }
+
+    user.verified = true;
+    await user.save();
+
+    await Otp.deleteOne({ phoneNumber });
+    await createMessageSupportIfNotExists(user._id);
+
+    const { accessToken, refreshToken } = generateTokens(user._id);
+
+    res.status(200).json({
+      message: "Account verified successfully",
+      success: true,
+      accessToken,
+      refreshToken,
+      user,
+    });
+  } catch (error) {
+    console.error("Error verifying account:", error);
+    res.status(500).json({ message: "Error verifying account", error, success: false });
+  }
+};
+
+exports.verifyAccounts = async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+
+  try {
     const otpRecord = await Otp.findOne({ phoneNumber });
     if (!otpRecord || otpRecord.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP", success: false });

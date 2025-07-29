@@ -1,7 +1,7 @@
 const apn = require("apn");
 const path = require("path");
 require("dotenv").config();
-const fs = require('fs');
+const fs = require("fs");
 
 const authKeyPath = path.resolve(process.env.APN_KEY_PATH);
 
@@ -19,7 +19,6 @@ const isProd = process.env.NODE_ENV === "production";
 const key = isProd
   ? process.env.APN_KEY_CONTENT
   : fs.readFileSync(path.resolve("certs/AuthKey_5ZG98B43BM.p8"), "utf8");
-
 
 const options = {
   token: {
@@ -61,7 +60,15 @@ async function sendIOSPush(
     const tokens = Array.isArray(deviceToken) ? deviceToken : [deviceToken];
     const result = await apnProvider.send(notification, tokens);
 
-    console.log("✅ Push Result:", JSON.stringify(result, null, 2));
+    console.log(
+      "✅ Push Result:",
+      deviceToken,
+      title,
+      message,
+      payload,
+      customBundleId,
+      JSON.stringify(result, null, 2)
+    );
     return result;
   } catch (error) {
     console.error("❌ Error sending push:", error);
