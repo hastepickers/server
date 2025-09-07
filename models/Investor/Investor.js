@@ -15,18 +15,15 @@ const investorSchema = new mongoose.Schema(
     address: { type: String },
     joined: { type: String },
 
+    isSuperAdmin: { type: Boolean, default: false },
     // new fields for verification handling
     verified: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now, expires: 1800 }, // 1800 secs = 30 mins
+    createdAt: { type: Date, default: Date.now }, // ❌ removed expiry
   },
   { timestamps: true }
 );
 
-investorSchema.index(
-  { createdAt: 1 },
-  { expireAfterSeconds: 1800, partialFilterExpression: { verified: false } }
-);
-
+// ❌ removed TTL index (no auto-expiry)
 const Investor = mongoose.model("Investor", investorSchema);
 
 module.exports = Investor;
