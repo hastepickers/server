@@ -4,7 +4,11 @@ const RequestARide = require("../models/Customer/RequestARideSchema");
 const router = express.Router();
 
 // Paystack secret key
-const PAYSTACK_SECRET_KEY = "sk_test_36fa1899b7cc4af2f3b86f3544c4ab99e9a80ea4";
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_KEY;
+
+if (!PAYSTACK_SECRET_KEY) {
+  console.error("❌ PAYSTACK_KEY is missing in environment variables");
+}
 
 // Route for generating Paystack payment URL
 router.post("/create-paystack-payment", async (req, res) => {

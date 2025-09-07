@@ -18,6 +18,7 @@ const generateOtp = (length) => {
   }
   return otp;
 };
+
 exports.getUserReceivingRidesDetails = async (req, res) => {
   const userId = req.user?.id;
 

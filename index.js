@@ -18,6 +18,7 @@ const company = require("./routes/Rider/CompanyRouter");
 const userRiders = require("./routes/Rider/UserRiderRouter");
 const wallet = require("./routes/Rider/WalletRouter");
 const pop = require("./routes/Notifications/Notifications");
+const investorRoutes = require("./routes/Investor/investorRoutes"); // This line imports the router
 
 dotenv.config();
 
@@ -70,6 +71,8 @@ app.use("/api/vehicle", typeOfVehicle);
 app.use("/api/chat", chatsMessages);
 app.use("/api/payment", payment);
 
+app.use("/api/v1/auth/investors", investorRoutes);
+
 app.use("/api/v1/auth/riders", riders);
 app.use("/api/v1/user/riders", userRiders);
 app.use("/api/v1/wallet/riders", wallet);
@@ -78,7 +81,7 @@ app.use("/api/v1/auth/company", company);
 app.use("/api/v1/notification", pop);
 messagingSockets(server);
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5200;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

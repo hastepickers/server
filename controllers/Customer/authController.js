@@ -40,7 +40,6 @@ exports.verifyRefreshToken = (req, res) => {
   }
 };
 
-
 exports.verifyRefreshTokenDrivers = (req, res) => {
   const { refreshToken } = req.body;
 
@@ -128,46 +127,83 @@ exports.healthCheck = (req, res) => {
 
 exports.login = async (req, res) => {
   const { phoneNumber } = req.body;
+  console.log("📌 Login attempt for phoneNumber:", phoneNumber);
 
   try {
     const user = await User.findOne({ phoneNumber });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    if (!user) {
+      console.log("❌ User not found");
+      return res.status(400).json({ message: "User not found" });
+    }
+
+    console.log("✅ User found:", user.email);
+
+    const currentTime = new Date();
 
     // ✅ Check if account is locked
-    if (user.loginLock) {
+    if (
+      user.loginLock &&
+      user.lockExpiresAt &&
+      user.lockExpiresAt > currentTime
+    ) {
+      const remainingHours = Math.ceil(
+        (user.lockExpiresAt.getTime() - currentTime.getTime()) /
+          (1000 * 60 * 60)
+      );
+      console.log(`⛔ Account is locked. Remaining hours: ${remainingHours}`);
       return res.status(423).json({
-        message:
-          "Account locked due to too many OTP attempts. Try again later.",
+        message: `Account locked due to too many OTP attempts. Try again in ${remainingHours} hour(s).`,
       });
+    } else if (
+      user.loginLock &&
+      user.lockExpiresAt &&
+      user.lockExpiresAt <= currentTime
+    ) {
+      // Unlock account after lock expiry
+      console.log("🔓 Unlocking account after lock expiry");
+      user.loginLock = false;
+      user.lockExpiresAt = null;
+      await user.save();
     }
 
     let otpRecord = await Otp.findOne({ phoneNumber });
-    const currentTime = new Date();
     const otpCode = generateOtp(6);
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min expiry
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min OTP expiry
+    console.log("🔑 Generated OTP:", otpCode);
 
     if (otpRecord) {
-      // ✅ Reset attempts if more than 3 hours passed
+      // Reset attempts if more than 3 hours since last attempt
       const hoursSinceLastAttempt =
-        (currentTime - otpRecord.lastAttemptAt) / (1000 * 60 * 60);
+        (currentTime.getTime() - otpRecord.lastAttemptAt.getTime()) /
+        (1000 * 60 * 60);
+      console.log(
+        "⏱ Hours since last OTP attempt:",
+        hoursSinceLastAttempt.toFixed(2)
+      );
+
       if (hoursSinceLastAttempt >= 3) {
         otpRecord.attempts = 0;
+        console.log("🔄 Resetting OTP attempts to 0");
       }
 
-      // ✅ Check attempts limit
+      // ✅ Check OTP attempts
       if (otpRecord.attempts >= 10) {
         user.loginLock = true;
+        user.lockExpiresAt = new Date(Date.now() + 5 * 60 * 60 * 1000); // 5 hours
         await user.save();
+        console.log("⛔ Too many OTP attempts. Account locked for 5 hours");
         return res.status(423).json({
-          message: "Too many OTP attempts. Account locked for 3 hours.",
+          message: "Too many OTP attempts. Account locked for 5 hours.",
         });
       }
 
+      // Update OTP record
       otpRecord.otp = otpCode;
       otpRecord.expiresAt = expiresAt;
       otpRecord.attempts += 1;
       otpRecord.lastAttemptAt = currentTime;
       await otpRecord.save();
+      console.log("✅ OTP record updated:", otpRecord);
     } else {
       otpRecord = new Otp({
         phoneNumber,
@@ -177,6 +213,7 @@ exports.login = async (req, res) => {
         lastAttemptAt: currentTime,
       });
       await otpRecord.save();
+      console.log("✅ New OTP record created:", otpRecord);
     }
 
     const emailHtml = generateOTPEmail(
@@ -185,11 +222,11 @@ exports.login = async (req, res) => {
       `${user.firstName} ${user.lastName}`
     );
     await sendEmail(user.email, "OTP for Verification", emailHtml);
+    console.log(`📧 OTP email sent to ${user.email}`);
 
-    console.log(`OTP sent for login to ${user.email} with code: ${otpCode}`);
     res.status(200).json({ message: "OTP sent successfully for login" });
   } catch (error) {
-    console.error("Error logging in:", error);
+    console.error("❌ Error logging in:", error);
     res.status(500).json({ message: "Error logging in", error });
   }
 };
@@ -264,7 +301,9 @@ exports.verifyAccount = async (req, res) => {
       let user = await User.findOne({ phoneNumber });
 
       if (!user) {
-        return res.status(404).json({ message: "User not found", success: false });
+        return res
+          .status(404)
+          .json({ message: "User not found", success: false });
       }
 
       if (!user.verified) {
@@ -292,7 +331,9 @@ exports.verifyAccount = async (req, res) => {
 
     const user = await User.findOne({ phoneNumber });
     if (!user) {
-      return res.status(404).json({ message: "User not found", success: false });
+      return res
+        .status(404)
+        .json({ message: "User not found", success: false });
     }
 
     if (user.verified) {
@@ -323,7 +364,9 @@ exports.verifyAccount = async (req, res) => {
     });
   } catch (error) {
     console.error("Error verifying account:", error);
-    res.status(500).json({ message: "Error verifying account", error, success: false });
+    res
+      .status(500)
+      .json({ message: "Error verifying account", error, success: false });
   }
 };
 

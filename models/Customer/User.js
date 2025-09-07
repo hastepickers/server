@@ -43,22 +43,24 @@ const userSchema = new mongoose.Schema({
   lastName: { type: String, required: true, trim: true, lowercase: true },
   phoneNumber: { type: String, required: true, unique: true, trim: true },
   countryCode: { type: String, required: true },
-  email: { type: String, required: false },
-  referralCode: { type: String, required: false },
-  imageUrl: { type: String, required: false },
+  email: { type: String },
+  referralCode: { type: String },
+  imageUrl: { type: String },
   verified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
+
   pushNotifications: { type: Boolean, default: true },
   newsletterSubscription: { type: Boolean, default: true },
   promotionNotifications: { type: Boolean, default: true },
   smsNotifications: { type: Boolean, default: true },
   emailNotifications: { type: Boolean, default: true },
+
   promoCode: { type: String },
   pickupCode: { type: Boolean, default: false },
 
-  // ✅ OTP Locking Mechanism
+  // ✅ Login Locking Mechanism
   loginLock: { type: Boolean, default: false },
-  loginLockUntil: { type: Date, default: null }, // Unlock after 5 hrs
+  lockExpiresAt: { type: Date, default: null }, // Unlock after 5 hours
 
   rank: {
     type: String,
@@ -84,7 +86,7 @@ const userSchema = new mongoose.Schema({
   },
 });
 
-// ✅ Methods
+// ✅ Methods to manage recent delivery locations
 userSchema.methods.addRecentDeliveryLocation = function (location) {
   this.recentDeliveryLocations = this.recentDeliveryLocations.filter(
     (loc) =>
@@ -103,6 +105,7 @@ userSchema.methods.addRecentDeliveryLocation = function (location) {
   this.recentDeliveryLocations = this.recentDeliveryLocations.slice(0, 5);
 };
 
+// ✅ Methods to manage receiving items
 userSchema.methods.addReceivingItem = function (receivingItemData) {
   this.receivingItems.unshift({
     rideId: receivingItemData.rideId,
@@ -123,6 +126,7 @@ userSchema.methods.addReceivingItem = function (receivingItemData) {
   });
 };
 
+// ✅ Generate Promo Code
 userSchema.methods.generatePromoCode = async function () {
   const baseCode = this.firstName + Math.random().toString(36).substr(2, 5);
   const hash = crypto

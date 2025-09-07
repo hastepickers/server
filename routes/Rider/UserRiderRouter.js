@@ -9,7 +9,9 @@ const {
   getRideSocketLogs,
   getRideById,
   getRidesByDriver,
-  getRidesByStatus
+  getRidesByStatus,
+  updateRiderLocation,
+  toggleRiderActiveStatus,
 } = require("../../controllers/Rider/UserRiderController");
 const { verifyRiderTokenMiddleware } = require("../../utils/ridertokenUtil");
 
@@ -26,6 +28,17 @@ router.post(
 );
 router.put("/resend-otp", verifyRiderTokenMiddleware, resendOtp);
 router.get("/all-driver-rides", verifyRiderTokenMiddleware, getRidesByDriver);
-router.get("/all-driver-rides-by-status/:status", verifyRiderTokenMiddleware, getRidesByStatus);
+router.get(
+  "/all-driver-rides-by-status/:status",
+  verifyRiderTokenMiddleware,
+  getRidesByStatus
+);
+router.put("/update-rider-location", updateRiderLocation);
+router.put(
+  "/toggle-rider-active-status",
+  verifyRiderTokenMiddleware,
+  toggleRiderActiveStatus
+);
 
+//toggleRiderActiveStatus
 module.exports = router;

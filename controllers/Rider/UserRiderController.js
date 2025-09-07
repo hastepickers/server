@@ -151,6 +151,80 @@ exports.getRideSocketLogs = async (req, res) => {
   }
 };
 
+exports.toggleRiderActiveStatus = async (req, res) => {
+  try {
+    const riderId = req.riderId;
+    const { active } = req.body;
+
+
+    console.log(req, active, 'riderId')
+    // Validate that the 'active' status is provided and is a boolean
+    if (typeof active !== "boolean") {
+      return res.status(400).json({
+        message: "The 'active' status is required and must be a boolean.",
+      });
+    }
+
+    // Find the rider and update their active status
+    const updatedRider = await Rider.findByIdAndUpdate(
+      riderId,
+      { active: active },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedRider) {
+      return res.status(404).json({ message: "Rider not found." });
+    }
+
+    res.status(200).json({
+      message: `Rider active status set to ${updatedRider.active}.`,
+      rider: updatedRider,
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Failed to update rider's active status.",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateRiderLocation = async (req, res) => {
+  try {
+    // const { id } = req.params;
+    const { latitude, longitude, address, id } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ message: "Latitude and longitude are required." });
+    }
+
+    const updatedRider = await Rider.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          "riderLocation.ridersLatitude": latitude,
+          "riderLocation.ridersLongitude": longitude,
+          "riderLocation.ridersAddress": address,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedRider) {
+      return res.status(404).json({ message: "Rider not found." });
+    }
+
+    res.status(200).json({
+      message: "Rider location updated successfully.",
+      rider: updatedRider,
+      success: true,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update rider location.", error: error.message });
+  }
+};
+
 // Get a ride by ID
 exports.getRideById = async (req, res) => {
   try {
