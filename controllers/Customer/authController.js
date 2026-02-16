@@ -221,8 +221,8 @@ exports.login = async (req, res) => {
       false,
       `${user.firstName} ${user.lastName}`
     );
-    await sendEmail(user.email, "OTP for Verification", emailHtml);
-    console.log(`📧 OTP email sent to ${user.email}`);
+   // await sendEmail(user.email, "OTP for Verification", emailHtml);
+    console.log(`📧 OTP email sent to ${user.email} ${otpCode}`);
 
     res.status(200).json({ message: "OTP sent successfully for login" });
   } catch (error) {

@@ -25,6 +25,7 @@
     "cors": "^2.8.5",
     "crypto-address-validators": "^1.0.3",
     "dotenv": "^16.4.5",
+    "expo-server-sdk": "^4.0.0",
     "express": "^4.21.0",
     "firebase-admin": "^13.4.0",
     "form-data": "^4.0.0",

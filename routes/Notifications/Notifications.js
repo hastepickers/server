@@ -6,7 +6,9 @@ const {
   sendIOSPush,
 } = require("../../utils/sendIOSPush");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
+const { sendNotification } = require("../../controllers/Notifications/sendNotificationExpo");
 const router = express.Router();
+const MarketingToken = require("../../models/MarketingToken");
 
 // ---------------------------
 // iOS ROUTES
@@ -226,6 +228,7 @@ router.post("/push-notifications/driver-send", async (req, res) => {
     }
 
     const users = await DriverDeviceToken.find({ userId: { $in: userIds } });
+    console.log(users, 'users')
     if (users.length === 0) {
       return res
         .status(404)
@@ -357,5 +360,8 @@ router.post("/marketing/send", async (req, res) => {
     return res.status(500).json({ message: "Failed to send notifications." });
   }
 });
+
+
+router.post("/expo-push/send", sendNotification);
 
 module.exports = router;
