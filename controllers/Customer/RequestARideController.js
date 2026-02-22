@@ -635,35 +635,61 @@ exports.getRidesByRiderId = async (req, res) => {
 };
 
 exports.getRidesOngoingForCustomer = async (req, res) => {
-  const customerId = req.user.id; // Get the customer ID from the JWT token
-  console.log(customerId, "customerId");
+  console.log("\n===============================");
+  console.log("🚀 getRidesOngoingForCustomer triggered");
+  console.log("===============================\n");
+
   try {
-    // Fetch rides where startRide is true and endRide is false
-    const rides = await RequestARide.find({
-      "customer.customerId": new mongoose.Types.ObjectId(customerId), // Ensure the customer ID is valid
-      "startRide.isStarted": true, // Ensure the ride has started
-      "endRide.isEnded": false, // Ensure the ride has not ended
-    })
+    const customerId = req.user?.id;
+
+    console.log("👉 Extracted customerId:", customerId);
+    console.log("👉 Full req.user:", req.user);
+
+    if (!customerId) {
+      console.log("❌ No customerId found in token");
+      return res.status(400).json({ message: "Invalid customer." });
+    }
+
+    const query = {
+      "customer.customerId": new mongoose.Types.ObjectId(customerId),
+      acceptRide: true,
+//      "startRide.isStarted": true,
+      "endRide.isEnded": false,
+      "cancelRide.isCancelled": false,
+    };
+
+    console.log("\n📌 Query being sent to MongoDB:");
+    console.log(query);
+
+    const rides = await RequestARide.find(query)
       .select(
-        "pickup customer deliveryDropoff paid endRide typeOfVehicle paymentData cancelRide startRide totalPrice _id createdAt rider"
-      ) // Select only the necessary fields
-      .lean(); // Use lean() for better performance if no mongoose methods are used on the result
+        "pickup customer deliveryDropoff paid endRide typeOfVehicle cancelRide startRide totalPrice _id createdAt rider"
+      )
+      .lean();
+
+    console.log("\n📦 Raw rides result from DB:");
+    console.log(JSON.stringify(rides, null, 2));
+    console.log("👉 Number of rides found:", rides?.length);
 
     if (!rides || rides.length === 0) {
+      console.log("⚠️ No rides matched the query.");
       return res
         .status(404)
         .json({ message: "No rides found for this customer." });
     }
 
+    console.log("✅ Sending successful response.\n");
+
     res.status(200).json({ rides, success: true });
   } catch (error) {
-    console.error("Error fetching rides by customerId:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching rides by customerId", error });
+    console.error("\n❌ ERROR in getRidesOngoingForCustomer:");
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching rides by customerId",
+      error: error.message,
+    });
   }
 };
-
 exports.rateRider = async (req, res) => {
   const { riderId } = req.params; // Assuming the rideId is passed in the route
   const { rating, rideId } = req.body;
