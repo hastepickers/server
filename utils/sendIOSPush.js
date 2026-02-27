@@ -2,6 +2,7 @@ const apn = require("apn");
 const path = require("path");
 require("dotenv").config();
 const fs = require("fs");
+const DeviceToken = require("../models/DeviceToken");
 
 const authKeyPath = path.resolve(process.env.APN_KEY_PATH);
 
@@ -59,6 +60,20 @@ async function sendIOSPush(
 
     const tokens = Array.isArray(deviceToken) ? deviceToken : [deviceToken];
     const result = await apnProvider.send(notification, tokens);
+
+    if (result.failed.length > 0) {
+      for (const failure of result.failed) {
+        if (
+          failure.response.reason === "BadDeviceToken" ||
+          failure.response.reason === "Unregistered"
+        ) {
+          console.log(`🧹 Cleaning up invalid token: ${failure.device}`);
+
+          // ✅ Automatically remove the dead token from your DB
+          await DeviceToken.deleteOne({ deviceToken: failure.device });
+        }
+      }
+    }
 
     console.log(
       "✅ Push Result:",
