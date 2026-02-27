@@ -434,7 +434,6 @@ exports.acceptRide = async (req, res) => {
   }
 };
 
-// Get a ride by ID HastePickersDrivers
 exports.getRideById = async (req, res) => {
   try {
     const ride = await RequestARide.findById(req.params.id);
@@ -442,7 +441,6 @@ exports.getRideById = async (req, res) => {
       return res.status(404).json({ message: "Ride not found" });
     }
 
-    // Helper function to format Nigerian phone numbers
     const formatPhone = (phone) => {
       if (!phone) return null;
       const trimmed = phone.toString().trim();
@@ -482,7 +480,7 @@ exports.getRideById = async (req, res) => {
     });
   }
 };
-// Update the ride status (start, cancel, end)
+
 exports.updateRideStatus = async (req, res) => {
   try {
     const ride = await RequestARide.findById(req.params.id);
@@ -549,16 +547,12 @@ exports.getCompletedRides = async (req, res) => {
   }
 };
 
-// Utility function to generate a 12-char UUID for the ride tracking ID
 const generateUUID = () => {
   return "xxxxxxxxxxxx".replace(/[x]/g, () =>
     ((Math.random() * 36) | 0).toString(36)
   );
 };
 
-// Get all rides by customerId
-// Get all rides by customerId
-// Get all rides by customerId
 exports.getRidesByCustomerId = async (req, res) => {
   const customerId = req.user.id; // Get user ID from JWT
   console.log(customerId, "customerIdcustomerId");
@@ -618,7 +612,6 @@ exports.getRideSocketLogs = async (req, res) => {
   }
 };
 
-// Get all rides by riderId
 exports.getRidesByRiderId = async (req, res) => {
   const { riderId } = req.params; // Get the riderId from the route params
 
@@ -653,7 +646,7 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
     const query = {
       "customer.customerId": new mongoose.Types.ObjectId(customerId),
       acceptRide: true,
-//      "startRide.isStarted": true,
+      //      "startRide.isStarted": true,
       "endRide.isEnded": false,
       "cancelRide.isCancelled": false,
     };
@@ -690,6 +683,7 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
     });
   }
 };
+
 exports.rateRider = async (req, res) => {
   const { riderId } = req.params; // Assuming the rideId is passed in the route
   const { rating, rideId } = req.body;

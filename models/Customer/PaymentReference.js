@@ -5,7 +5,6 @@ const paymentReferenceSchema = new mongoose.Schema(
     orderID: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      ref: "Order", // Assuming you have an Order model
     },
     reference: {
       type: String,

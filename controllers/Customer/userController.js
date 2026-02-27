@@ -4,8 +4,6 @@ const RequestARide = require("../../models/Customer/RequestARideSchema");
 const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
 const { sendEmail } = require("../../utils/emailUtils");
 
-
-
 function capitalize(str) {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -244,27 +242,21 @@ exports.checkPhoneNumberAgainstUser = async (req, res) => {
 };
 
 exports.getUserProfile = async (req, res) => {
-  const userId = req.user.id; // Get user ID from JWT
+  const userId = req.user.id; 
   console.log(userId, "userIduserId");
   try {
-    // Fetch the user object excluding the password
     const userAccount = await User.findById(userId).select("-password");
     if (!userAccount)
       return res.status(404).json({ message: "User not found" });
-
-    // Fetch completed rides for the user
     const completedRidesCount = await RequestARide.countDocuments({
       "customer.customerId": userId,
       "endRide.isEnded": true,
     });
-
-    // Add the completedRidesCount to the user object
     const user = {
       ...userAccount.toObject(),
       completedRidesCount,
     };
 
-    // Return the user profile with the completed rides count
     console.log(user, "user");
     res.status(200).json(user);
   } catch (error) {

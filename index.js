@@ -19,6 +19,8 @@ const userRiders = require("./routes/Rider/UserRiderRouter");
 const wallet = require("./routes/Rider/WalletRouter");
 const pop = require("./routes/Notifications/Notifications");
 const investorRoutes = require("./routes/Investor/investorRoutes"); // This line imports the router
+const admin = require('./routes/Admin/AdminRouter')
+const dashboard = require('./routes/Admin/adminDashboardRoutes')
 
 dotenv.config();
 
@@ -79,6 +81,10 @@ app.use("/api/v1/wallet/riders", wallet);
 
 app.use("/api/v1/auth/company", company);
 app.use("/api/v1/notification", pop);
+
+app.use("/api/v1/admin", admin);
+app.use("/api/v1/admin/dashboard", dashboard);
+
 messagingSockets(server);
 
 const PORT = process.env.PORT || 5200;

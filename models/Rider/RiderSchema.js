@@ -39,7 +39,7 @@ const RiderSchema = new mongoose.Schema({
     { type: mongoose.Schema.Types.ObjectId, ref: "Withdrawal" }, // Reference to Withdrawal
   ],
   earnings: [
-    { type: mongoose.Schema.Types.ObjectId, ref: "Earning" }, // Reference to Earning
+    { type: mongoose.Schema.Types.ObjectId, ref: "Earnings" }, // Reference to Earning
   ],
   accountDetails: [
     {
