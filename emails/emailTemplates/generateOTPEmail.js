@@ -20,146 +20,118 @@ const generateOTPEmail = (
         <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link
-          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
         <style>
           body {
-            font-family: "DM Sans", Arial, sans-serif;
+            font-family: Arial, sans-serif;
             background-color: #f7f7f7;
             margin: 0;
             padding: 20px;
-            text-align: left;
-            width: 100%;
-            color: #555555; /* All fonts in gray */
+            color: #555555;
           }
           .container {
             max-width: 600px;
             margin: 0 auto;
             background-color: #ffffff;
-            border-radius: 8px;
-            padding: 0;
-            border: 0.5px #66666666 solid;
-            text-align: left;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
             overflow: hidden;
-            text-decoration: none;
           }
-          .header-logo {
-            width: 48px;
-            margin: 20px;
+          /* Text-based Logo Replacement */
+          .logo-box {
+            padding: 25px 20px;
+            font-size: 24px;
+            font-weight: 900;
+            color: #cc0000; /* Pickars Red */
+            letter-spacing: -1px;
           }
           .header-banner {
-            background: url("https://res.cloudinary.com/daiiiiupy/image/upload/v1752742519/clcard_lzlr0s.png")
-              no-repeat center center;
-            background-size: cover;
-            height: 96px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            color: #fff; /* Keep white for contrast on dark banner */
-            position: relative;
-            margin: 12px 20px;
+            background-color: #1a1a1a; /* Dark sleek background instead of image */
+            margin: 0 20px;
             border-radius: 12px;
-          }
-          .header-text {
-            padding: 31px 20px;
-            border-radius: 6px;
-            font-size: 24px;
-            font-weight: 700;
-            color: #ffffff; /* Keep white for contrast on dark banner */
-            max-width: 100%;
+            padding: 40px 20px;
             text-align: center;
           }
-          .title {
-            color: #555555; /* Changed from red to gray */
-            font-size: 24px;
+          .otp-code {
+            font-size: 42px;
             font-weight: 700;
-            margin: 20px;
+            letter-spacing: 8px;
+            color: #ffffff;
+            margin: 0;
+          }
+          .content-area {
+            padding: 10px 20px;
+          }
+          .title-text {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333333;
+            margin-bottom: 15px;
           }
           .paragraph {
             font-size: 16px;
-            color: #555555; /* Ensure all paragraphs are gray */
             line-height: 1.6;
-            margin: 12px 20px;
-            text-decoration: none;
+            margin: 15px 0;
           }
-          .paragraph-bold {
-            font-weight: 900;
-            text-decoration: none;
-          }
-          .social-icons-container {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            justify-content: center;
-            margin: 10px 20px;
-            width: 100%;
-          }
-          .social-icon {
-            width: 24px;
-            height: 24px;
-            margin-right: 24px;
+          .instruction-box {
+            background-color: #fff4f4;
+            border-left: 4px solid #cc0000;
+            padding: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+            font-style: italic;
           }
           .footer {
-            font-size: 14px;
-            color: #555555; /* Changed to gray */
-            margin: 20px;
+            padding: 20px;
+            border-top: 1px solid #eeeeee;
+            font-size: 13px;
+            color: #888888;
           }
           .footer-link {
-            color: #555555; /* Changed from red to gray */
+            color: #cc0000;
             text-decoration: none;
+            font-weight: bold;
           }
-          .otp-code {
-            font-size: 36px; /* Larger font size for OTP */
-            font-weight: 700;
-            letter-spacing: 4px; /* Space out the digits */
-            color: #ffffff;
+          .social-links {
+             margin-top: 15px;
+             font-weight: bold;
+             color: #555555;
           }
         </style>
         </head>
         <body>
         <div class="container">
-          <img src="https://res.cloudinary.com/daiiiiupy/image/upload/v1752741191/mainLogo_kurdtf.png"
-                alt="Pickars Logo" class="header-logo" />
+          <div class="logo-box">
+            PICKARS
+          </div>
     
-          <p class="paragraph">Hi ${userName},</p>
-          <p class="paragraph paragraph-bold">${headerText}</p>
-          
-          <p class="paragraph">${bodyIntro}</p>
-          <br />
-          
-          <p class="paragraph paragraph-bold">Your One-Time Password is:</p>
+          <div class="content-area">
+            <p class="paragraph">Hi <strong>${userName}</strong>,</p>
+            <div class="title-text">${headerText}</div>
+            
+            <p class="paragraph">${bodyIntro}</p>
+            
+            <p class="paragraph" style="text-align: center; font-weight: bold; margin-top: 30px;">Your One-Time Password is:</p>
+          </div>
+
           <div class="header-banner">
-            <div class="header-text otp-code">${otpCode}</div>
+            <div class="otp-code">${otpCode}</div>
           </div>
-          <p class="paragraph">**${instruction}**</p>
-          
-          <br />
-    
-          <p class="paragraph">If you did not request this OTP, please ignore this email or contact our support team immediately.</p>
-    
-          <br />
-          <div class="social-icons-container">
-            <a href="https://instagram.com/pickars"><img src="https://img.icons8.com/ios/24/666666/instagram-new.png" alt="Instagram" class="social-icon"/></a>
-            <a href="https://facebook.com/pickars"><img src="https://img.icons8.com/ios/24/666666/facebook-new.png" alt="Facebook" class="social-icon"/></a>
-            <a href="https://tiktok.com/@pickars"><img src="https://img.icons8.com/ios/24/666666/tiktok.png" alt="TikTok" class="social-icon"/></a>
-            <a href="https://twitter.com/pickars"><img src="https://img.icons8.com/ios/24/666666/twitter.png" alt="Twitter" class="social-icon"/></a>
+
+          <div class="content-area">
+            <div class="instruction-box">
+              ${instruction}
+            </div>
+            
+            <p class="paragraph">If you did not request this OTP, please ignore this email or contact our support team immediately.</p>
           </div>
-          <br />
     
-          <p class="footer">The Pickars Team</p>
-          <p class="footer">
-            Got any Issues? Email us at
-            <a
-              href="mailto:support@pickars.com"
-              class="footer-link"
-              >support@pickars.com</a
-            >
-          </p>
+          <div class="footer">
+            <p>The Pickars Team</p>
+            <p>Got any issues? Email us at <a href="mailto:support@pickars.com" class="footer-link">support@pickars.com</a></p>
+            <div class="social-links">
+              INSTAGRAM | FACEBOOK | TIKTOK | TWITTER
+            </div>
+          </div>
         </div>
         </body>
         </html>
