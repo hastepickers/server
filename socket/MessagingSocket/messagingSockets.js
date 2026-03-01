@@ -17,6 +17,7 @@ const notifyUsers = require("../../emails/emailTemplates/notifyUsers");
 const notifyDriver = require("../../emails/emailTemplates/notifyDriver");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
+const { sendSMS } = require("../../utils/sendSMS");
 
 async function removeReceivingItemsForRide(rideId) {
   try {
@@ -783,6 +784,10 @@ const messagingSockets = (server) => {
                       emailTextDescription,
                       htmlEmailContent // Pass the already generated HTML content
                     );
+                    const customerPhone = formatPhone(
+                      updatedRide.customer.phoneNumber
+                    );
+
                     console.log(
                       `Email notification sent to ${receiverEmail} for user ${actualReceiverUser._id}.`
                     );
@@ -813,6 +818,12 @@ const messagingSockets = (server) => {
           }
         }
 
+        // Create MessageSupport if it doesn't exist
+        if (updatedRide.customer?.phoneNumber) {
+          const customerPhone = formatPhone(updatedRide.customer.phoneNumber);
+          const msg = `Pickars: ${rider.firstName} has accepted your delivery request. Track them in the app!`;
+          await sendSMS(customerPhone, msg);
+        }
         // Create MessageSupport if it doesn't exist
         const existingMessageSupport = await MessageSupport.findOne({ rideId });
         if (!existingMessageSupport) {
@@ -880,6 +891,12 @@ const messagingSockets = (server) => {
           return;
         }
 
+        if (updatedRide.customer?.phoneNumber) {
+          const customerPhone = formatPhone(updatedRide.customer.phoneNumber);
+          const customerMsg = `Pickars: Your delivery has started! ${rider.firstName} is now en route to the drop-off location(s).`;
+          await sendSMS(customerPhone, customerMsg);
+        }
+
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
           rider,
@@ -935,6 +952,13 @@ const messagingSockets = (server) => {
         if (!updatedRide) {
           console.error(`No ride found with ID: ${rideObject}`);
           return;
+        }
+
+        if (updatedRide.customer?.phoneNumber) {
+          await sendSMS(
+            formatPhone(updatedRide.customer.phoneNumber),
+            `Pickars: Your delivery is complete! Thank you for choosing Pickars.`
+          );
         }
 
         if (updatedRide.totalPrice) {
@@ -1180,7 +1204,7 @@ const messagingSockets = (server) => {
               )
             )
           );
-          
+
           console.log("Push notifications sent to driver:", driverIdForPush);
 
           const rideSocketData = new RideSocket({
