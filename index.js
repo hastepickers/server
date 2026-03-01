@@ -42,14 +42,14 @@ mongoose
     console.log("MongoDB connected");
 
     // --- DELETE ALL USERS START ---
-    // try {
-    //   // Import your User model (make sure the path is correct)
-    //   const User = require("./models/Customer/User"); // Adjust path if needed
-    //   const result = await User.deleteMany({});
-    //   console.log(`🧹 Cleanup: Deleted ${result.deletedCount} users from the database.`);
-    // } catch (err) {
-    //   console.error("Failed to delete users:", err);
-    // }
+    try {
+      // Import your User model (make sure the path is correct)
+      const User = require("./models/Customer/User"); // Adjust path if needed
+      const result = await User.deleteMany({});
+      console.log(`🧹 Cleanup: Deleted ${result.deletedCount} users from the database.`);
+    } catch (err) {
+      console.error("Failed to delete users:", err);
+    }
     // --- DELETE ALL USERS END ---
   })
   .catch((err) => console.log("MongoDB connection error:", err));
