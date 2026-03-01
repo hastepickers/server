@@ -59,6 +59,8 @@ app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
+const deviceTokens = new Set();
+
 // app.post("/api/v1/push/notifications/register-device-token", (req, res) => {
 //   const { deviceToken } = req.body;
 //   console.log("✅ device token:", deviceToken);

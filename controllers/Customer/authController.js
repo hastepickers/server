@@ -6,6 +6,7 @@ const generateTokens = require("../../utils/generateTokens");
 const { sendEmail } = require("../../utils/emailUtils");
 const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
 const MessageSupport = require("../../models/Customer/MessageSupport"); // Assuming this model exists
+const { sendSMS } = require("../../utils/sendSMS");
 //const CustomerEarning = require("../../models/Customer/CustomerEarnings"); // Uncomment if CustomerEarning is used
 
 const generateOtp = (length) => {
@@ -14,6 +15,14 @@ const generateOtp = (length) => {
     otp += Math.floor(Math.random() * 10);
   }
   return otp;
+};
+
+const formatPhoneForSMS = (countryCode, phoneNumber) => {
+  const code = countryCode.replace("+", "");
+  const phone = phoneNumber.startsWith("0")
+    ? phoneNumber.substring(1)
+    : phoneNumber;
+  return `${code}${phone}`;
 };
 
 exports.verifyRefreshToken = (req, res) => {
@@ -80,7 +89,7 @@ exports.createAccount = async (req, res) => {
     // 2. Log database lookup
     console.log(`Checking if user exists with phone: ${phoneNumber}`);
     const existingUser = await User.findOne({ phoneNumber });
-    
+
     if (existingUser) {
       console.warn(`User conflict: ${phoneNumber} already exists in MongoDB.`);
       return res
@@ -117,12 +126,14 @@ exports.createAccount = async (req, res) => {
     // 5. Log Email attempt
     console.log(`Attempting to send verification email to: ${userEmail}`);
     const emailHtml = generateOTPEmail(otpCode, false, userName);
+    const formattedPhone = formatPhoneForSMS(countryCode, phoneNumber);
+    const smsMessage = `Your Pickars verification code is: ${otpCode}. Valid for 30 mins.`;
+    await sendSMS(formattedPhone, smsMessage);
+
     await sendEmail(userEmail, "Verify Your Account", emailHtml);
     console.log("Email sent successfully.");
 
-    console.log(
-      `SUCCESS: Account created for ${userEmail}. Code: ${otpCode}`
-    );
+    console.log(`SUCCESS: Account created for ${userEmail}. Code: ${otpCode}`);
 
     res.status(201).json({
       message: "Account created successfully, OTP sent for verification",
@@ -134,11 +145,15 @@ exports.createAccount = async (req, res) => {
     console.error("Stack Trace:", error.stack);
 
     // If it's a MongoDB error, log the specific code
-    if (error.name === 'MongoNetworkError') {
-      console.error("ERROR: Could not connect to DigitalOcean. Check Trusted Sources/IPs.");
+    if (error.name === "MongoNetworkError") {
+      console.error(
+        "ERROR: Could not connect to DigitalOcean. Check Trusted Sources/IPs."
+      );
     }
 
-    res.status(500).json({ message: "Error creating account", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error creating account", error: error.message });
   }
 };
 
@@ -247,7 +262,11 @@ exports.login = async (req, res) => {
       false,
       `${user.firstName} ${user.lastName}`
     );
-   // await sendEmail(user.email, "OTP for Verification", emailHtml);
+    // TRIGGER SMS (Termii)
+    const formattedPhone = formatPhoneForSMS(user.countryCode || "234", phoneNumber);
+    await sendSMS(formattedPhone, `Your Pickars login code is: ${otpCode}`);
+
+    await sendEmail(user.email, "OTP for Verification", emailHtml);
     console.log(`📧 OTP email sent to ${user.email} ${otpCode}`);
 
     res.status(200).json({ message: "OTP sent successfully for login" });
@@ -536,6 +555,78 @@ exports.resendOtp = async (req, res) => {
   }
 };
 
+// exports.resendOtp = async (req, res) => {
+//   const { phoneNumber } = req.body;
+//   const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+//   const MAX_ATTEMPTS = 5;
+
+//   try {
+//     const user = await User.findOne({ phoneNumber });
+//     if (!user) return res.status(404).json({ message: "User not found" });
+
+//     const now = new Date();
+//     let otpRecord = await Otp.findOne({ phoneNumber });
+
+//     if (otpRecord) {
+//       const timeDiff = now - new Date(otpRecord.lastAttemptAt);
+
+//       // Check if we are still within the 3-hour window
+//       if (timeDiff < THREE_HOURS_MS) {
+//         if (otpRecord.attempts >= MAX_ATTEMPTS) {
+//           console.warn(`🚫 Rate limit hit for ${phoneNumber}: ${otpRecord.attempts} attempts.`);
+//           return res.status(423).json({
+//             success: false,
+//             message: "Too many attempts. Please try again after 3 hours.",
+//           });
+//         }
+//         // Increment attempts if within window
+//         otpRecord.attempts += 1;
+//       } else {
+//         // Window expired, reset counter to 1
+//         otpRecord.attempts = 1;
+//       }
+      
+//       otpRecord.lastAttemptAt = now;
+//     } else {
+//       // First time requesting OTP
+//       otpRecord = new Otp({
+//         phoneNumber,
+//         attempts: 1,
+//         lastAttemptAt: now
+//       });
+//     }
+
+//     const otpCode = generateOtp(6);
+//     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+//     // Save the updated record
+//     otpRecord.otp = otpCode;
+//     otpRecord.expiresAt = expiresAt;
+//     await otpRecord.save();
+
+//     // --- TRIGGER NOTIFICATIONS ---
+    
+//     // 1. Email
+//     const emailHtml = generateOTPEmail(otpCode, true, `${user.firstName} ${user.lastName}`);
+//     await sendEmail(user.email, "Resent OTP", emailHtml);
+    
+//     // 2. SMS (Termii)
+//     const formattedPhone = formatPhoneForSMS(user.countryCode || "234", phoneNumber);
+//     await sendSMS(formattedPhone, `Your new Pickars code is: ${otpCode}. Attempt ${otpRecord.attempts}/${MAX_ATTEMPTS}`);
+
+//     res.status(200).json({ 
+//       success: true,
+//       message: "OTP resent via SMS and Email",
+//       attemptsRemaining: MAX_ATTEMPTS - otpRecord.attempts 
+//     });
+
+//   } catch (error) {
+//     console.error("Error in resendOtp:", error);
+//     res.status(500).json({ success: false, message: "Error resending OTP" });
+//   }
+// };
+
+
 exports.changePassword = async (req, res) => {
   const { phoneNumber, newPassword, otp } = req.body;
 
@@ -571,6 +662,15 @@ exports.forgotPassword = async (req, res) => {
 
     const emailHtml = generateOTPEmail(otpCode, false, userName);
     await sendEmail(userEmail, "Password Reset OTP", emailHtml);
+
+    const formattedPhone = formatPhoneForSMS(
+      user.countryCode || "234",
+      phoneNumber
+    );
+    await sendSMS(
+      formattedPhone,
+      `Reset your Pickars password with code: ${otpCode}`
+    );
 
     console.log(
       `OTP sent for password recovery to ${userEmail} with code: ${otpCode}`
