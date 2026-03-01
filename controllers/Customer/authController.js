@@ -65,6 +65,10 @@ exports.verifyRefreshTokenDrivers = (req, res) => {
 };
 
 exports.createAccount = async (req, res) => {
+  // 1. Log the incoming request body from the mobile app
+  console.log("--- INCOMING REQUEST: CREATE ACCOUNT ---");
+  console.log("Request Body:", req.body);
+
   let { firstName, email, referralCode, lastName, phoneNumber, countryCode } =
     req.body;
 
@@ -73,8 +77,12 @@ exports.createAccount = async (req, res) => {
     lastName = lastName.toLowerCase();
     email = email.toLowerCase();
 
+    // 2. Log database lookup
+    console.log(`Checking if user exists with phone: ${phoneNumber}`);
     const existingUser = await User.findOne({ phoneNumber });
+    
     if (existingUser) {
+      console.warn(`User conflict: ${phoneNumber} already exists in MongoDB.`);
       return res
         .status(400)
         .json({ message: "User with this phone number already exists" });
@@ -89,30 +97,48 @@ exports.createAccount = async (req, res) => {
       referralCode,
     });
 
+    // 3. Log the save attempt to DigitalOcean
+    console.log("Attempting to save user to DigitalOcean MongoDB...");
     await user.save();
+    console.log("User successfully saved with ID:", user._id);
 
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
+    // 4. Log OTP creation
+    console.log(`Generating OTP: ${otpCode} for ${phoneNumber}`);
     const otpRecord = new Otp({ phoneNumber, otp: otpCode, expiresAt });
     await otpRecord.save();
+    console.log("OTP record saved to database.");
 
     const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
     const userEmail = user.email;
 
+    // 5. Log Email attempt
+    console.log(`Attempting to send verification email to: ${userEmail}`);
     const emailHtml = generateOTPEmail(otpCode, false, userName);
     await sendEmail(userEmail, "Verify Your Account", emailHtml);
+    console.log("Email sent successfully.");
 
     console.log(
-      `Account created and OTP sent to ${userEmail} with code: ${otpCode}`
+      `SUCCESS: Account created for ${userEmail}. Code: ${otpCode}`
     );
 
     res.status(201).json({
       message: "Account created successfully, OTP sent for verification",
     });
   } catch (error) {
-    console.error("Error creating account:", error);
-    res.status(500).json({ message: "Error creating account", error });
+    // 6. Detailed Error Logging
+    console.error("--- CRITICAL ERROR IN CREATE ACCOUNT ---");
+    console.error("Error Message:", error.message);
+    console.error("Stack Trace:", error.stack);
+
+    // If it's a MongoDB error, log the specific code
+    if (error.name === 'MongoNetworkError') {
+      console.error("ERROR: Could not connect to DigitalOcean. Check Trusted Sources/IPs.");
+    }
+
+    res.status(500).json({ message: "Error creating account", error: error.message });
   }
 };
 

@@ -31,14 +31,28 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+
+
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log("MongoDB connection error:", err));
+  .then(async () => {
+    console.log("MongoDB connected");
 
+    // --- DELETE ALL USERS START ---
+    // try {
+    //   // Import your User model (make sure the path is correct)
+    //   const User = require("./models/Customer/User"); // Adjust path if needed
+    //   const result = await User.deleteMany({});
+    //   console.log(`🧹 Cleanup: Deleted ${result.deletedCount} users from the database.`);
+    // } catch (err) {
+    //   console.error("Failed to delete users:", err);
+    // }
+    // --- DELETE ALL USERS END ---
+  })
+  .catch((err) => console.log("MongoDB connection error:", err));
 const server = http.createServer(app);
 
 app.get("/", (req, res) => {
