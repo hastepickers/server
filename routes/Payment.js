@@ -1,6 +1,8 @@
 const express = require("express");
 const axios = require("axios");
 const RequestARide = require("../models/Customer/RequestARideSchema");
+const { sendEmail } = require("../utils/emailUtils");
+const { sendSMS } = require("../utils/sendSMS");
 const router = express.Router();
 
 // Paystack secret key
@@ -30,7 +32,7 @@ router.post("/create-paystack-payment", async (req, res) => {
       callback_url,
     };
 
-    console.log(payload, 'payloadpayload')
+    console.log(payload, "payloadpayload");
     // Make a request to Paystack API to initialize the payment
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
@@ -47,7 +49,7 @@ router.post("/create-paystack-payment", async (req, res) => {
     const { reference, authorization_url } = response.data.data;
 
     // Return the checkout URL and reference
-    
+
     res.status(200).json({
       checkout_url: authorization_url,
       reference, // Include reference in the response
@@ -65,7 +67,7 @@ router.get("/verify-payment/:orderID", async (req, res) => {
   try {
     const { reference } = req.query;
     const { orderID } = req.params;
-    console.log(orderID, 'payloadpayload')
+    console.log(orderID, "payloadpayload");
     // Validate the orderID and reference
     if (!reference) {
       return res.status(400).json({ error: "Payment reference is required." });
@@ -139,6 +141,48 @@ router.get("/verify-payment/:orderID", async (req, res) => {
         { new: true }
       );
 
+      const customerEmail = paymentData.customer.email;
+      const customerPhone =
+        paymentData.customer.phone || updatedRide.customer?.phoneNumber;
+      const firstName = updatedRide.customer?.firstName || "Customer";
+
+      // 1. Send SMS via Termii
+      if (customerPhone) {
+        try {
+          // Format phone: remove '+' and spaces for Termii
+          const cleanPhone = customerPhone
+            .toString()
+            .replace(/\s+/g, "")
+            .replace("+", "");
+          const smsMsg = `Hi ${firstName}, your payment of NGN ${amountPaid} for ride #${orderID.slice(
+            -6
+          )} was successful. Thank you for choosing Pickars!`;
+          await sendSMS(cleanPhone, smsMsg);
+        } catch (smsErr) {
+          console.error("SMS notification failed:", smsErr.message);
+        }
+      }
+
+      // 2. Send Email via Zoho
+      try {
+        const subject = "Payment Confirmed - Pickars";
+        const emailBody = `
+          Hi ${firstName},
+
+          Your payment for ride order #${orderID} has been successfully processed.
+          
+          Amount: NGN ${amountPaid}
+          Reference: ${reference}
+          Date: ${new Date(paymentData.paid_at).toLocaleString()}
+
+          Safe travels!
+          Team Pickars
+        `;
+        await sendEmail(customerEmail, subject, emailBody);
+      } catch (emailErr) {
+        console.error("Email notification failed:", emailErr.message);
+      }
+
       // Handle the case where the ride isn't found (e.g., invalid orderID)
       if (!updatedRide) {
         return res.status(404).json({ error: "Order not found." });
@@ -147,14 +191,14 @@ router.get("/verify-payment/:orderID", async (req, res) => {
       res.status(200).json({
         message: "Payment verified and updated successfully.",
         updatedRide,
-        success: true
+        success: true,
       });
     } else {
       // Payment failed or incomplete
       res.status(400).json({
         message: "Payment verification failed.",
         paymentData,
-        success: false
+        success: false,
       });
     }
   } catch (error) {
