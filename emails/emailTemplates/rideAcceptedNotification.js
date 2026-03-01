@@ -1,10 +1,5 @@
-// utils/emailTemplates/rideAcceptedNotification.js
-
 /**
  * Generates HTML for notifying a customer when a driver accepts their ride.
- *
- * @param {object} ride - The ride object from the RequestARide model.
- * @returns {string} - HTML email content.
  */
 const generateRideAcceptedNotification = (ride) => {
   if (!ride) {
@@ -12,52 +7,42 @@ const generateRideAcceptedNotification = (ride) => {
     return null;
   }
 
-  // Format names with capital first letter
   const formatName = (name) => {
     if (!name) return "";
     return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
   };
 
-  // Customer name
   const customerName = `${formatName(ride.customer.firstName)} ${formatName(
     ride.customer.lastName
   )}`;
-
-  // Pickup location
   const pickupLocation = ride.pickup?.pickupAddress || "Not provided";
-
-  // Delivery code
   const deliveryCode = ride.pickup?.pickupCode || "N/A";
-
-  // Delivery details table rows
-  const deliveryRows = ride.deliveryDropoff
-    .map(
-      (dropoff) => `
-        <tr>
-          <td style="padding:8px; border:1px solid #ccc;">${
-            dropoff.deliveryAddress
-          }</td>
-          <td style="padding:8px; border:1px solid #ccc;">${formatName(
-            dropoff.receiverName
-          )}</td>
-          <td style="padding:8px; border:1px solid #ccc;">${
-            dropoff.receiverPhoneNumber
-          }</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  // Rider details
   const riderFullName = `${formatName(ride.rider.firstName)} ${formatName(
     ride.rider.lastName
   )}`;
   const riderPhoneNumber = ride.rider.phoneNumber || "N/A";
-
-  // Total price
   const totalPrice = ride.totalPrice
     ? `₦${ride.totalPrice.toLocaleString()}`
     : "N/A";
+
+  // Modern Card-style layout for delivery stops (instead of a messy table)
+  const deliveryStopsHtml = ride.deliveryDropoff
+    .map(
+      (dropoff, index) => `
+      <div style="padding: 12px; border-bottom: 1px solid #eee; margin-bottom: 5px;">
+        <p style="margin: 0; font-size: 13px; color: #999;">STOP ${
+          index + 1
+        }</p>
+        <p style="margin: 4px 0; font-size: 15px; color: #333;"><strong>${
+          dropoff.deliveryAddress
+        }</strong></p>
+        <p style="margin: 0; font-size: 14px; color: #555;">Reciever: ${formatName(
+          dropoff.receiverName
+        )} • ${dropoff.receiverPhoneNumber}</p>
+      </div>
+    `
+    )
+    .join("");
 
   return `
   <!DOCTYPE html>
@@ -66,47 +51,56 @@ const generateRideAcceptedNotification = (ride) => {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body { font-family: Arial, sans-serif; background-color: #f7f7f7; margin:0; padding:20px; }
-    .container { max-width:600px; margin:0 auto; background:#fff; border-radius:8px; border:1px solid #ddd; padding:20px; }
-    .header { font-size:22px; font-weight:bold; color:#ff0000; margin-bottom:10px; }
-    .paragraph { font-size:16px; color:#555; margin:10px 0; }
-    .code-box { text-align:center; font-size:24px; font-weight:bold; color:#fff; background:#ff0000; padding:15px; border-radius:6px; margin:15px 0; }
-    table { width:100%; border-collapse:collapse; margin:20px 0; }
-    th, td { text-align:left; font-size:14px; }
-    th { background:#f4f4f4; font-weight:bold; }
-    .footer { text-align:center; font-size:14px; color:#999; margin-top:20px; }
+    body { font-family: Arial, sans-serif; background-color: #f7f7f7; margin:0; padding:20px; color: #555; }
+    .container { max-width:600px; margin:0 auto; background:#fff; border-radius:12px; border:1px solid #e0e0e0; overflow:hidden; }
+    .logo-box { padding: 25px 20px; font-size: 24px; font-weight: 900; color: #cc0000; letter-spacing: -1px; }
+    .content { padding: 0 20px 20px 20px; }
+    .status-tag { display: inline-block; background-color: #e6fff0; color: #008037; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
+    .header-banner { background-color: #1a1a1a; margin: 0 20px; border-radius: 12px; padding: 30px 20px; text-align: center; }
+    .code-text { font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #ffffff; margin: 0; }
+    .rider-card { margin: 20px 0; padding: 15px; border: 1px dashed #ccc; border-radius: 8px; text-align: center; background-color: #fafafa; }
+    .price-display { font-size: 24px; font-weight: bold; color: #333; text-align: right; margin-top: 20px; }
+    .footer { padding: 20px; border-top: 1px solid #eee; font-size: 12px; color: #888; }
+    .social-links { margin-top: 10px; font-weight: bold; color: #999; font-size: 11px; }
   </style>
   </head>
   <body>
     <div class="container">
-      <div class="header">Your Ride is on the Way!</div>
-      <p class="paragraph">Hi ${customerName},</p>
-      <p class="paragraph">
-        A driver has accepted your ride and is on the way to the pickup location below:
-      </p>
-      <p class="paragraph"><strong>Pickup Location:</strong> ${pickupLocation}</p>
+      <div class="logo-box">PICKARS</div>
       
-      <div class="code-box">Your Delivery Code: ${deliveryCode}</div>
-      
-      <p class="paragraph"><strong>Rider:</strong> ${riderFullName} | Phone: ${riderPhoneNumber}</p>
-      
-      <h3>Delivery Details</h3>
-      <table>
-        <thead>
-          <tr>
-            <th style="padding:8px; border:1px solid #ccc;">Delivery Address</th>
-            <th style="padding:8px; border:1px solid #ccc;">Receiver Name</th>
-            <th style="padding:8px; border:1px solid #ccc;">Phone</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${deliveryRows}
-        </tbody>
-      </table>
-      
-      <p class="paragraph"><strong>Total Price:</strong> ${totalPrice}</p>
-      
-      <p class="footer">Thank you for choosing Pickars!</p>
+      <div class="content">
+        <div class="status-tag">RIDER ASSIGNED</div>
+        <p style="font-size: 16px; margin: 10px 0;">Hi <strong>${customerName}</strong>,</p>
+        <p style="font-size: 15px; line-height: 1.5;">Great news! A rider has accepted your request and is heading to your pickup location.</p>
+        
+        <p style="margin-top: 20px; margin-bottom: 5px; font-weight: bold;">Pickup Location:</p>
+        <p style="margin: 0; font-size: 15px; color: #333;">${pickupLocation}</p>
+      </div>
+
+      <div class="header-banner">
+        <p style="color: #999; font-size: 12px; margin-top: 0; margin-bottom: 10px; letter-spacing: 1px;">DELIVERY CODE</p>
+        <div class="code-text">${deliveryCode}</div>
+      </div>
+
+      <div class="content">
+        <div class="rider-card">
+          <span style="font-size: 12px; color: #999; text-transform: uppercase;">Your Rider</span>
+          <p style="margin: 5px 0; font-size: 18px; font-weight: bold; color: #333;">${riderFullName}</p>
+          <a href="tel:${riderPhoneNumber}" style="color: #cc0000; text-decoration: none; font-weight: bold;">Call +234${riderPhoneNumber}</a>
+        </div>
+
+        <p style="font-weight: bold; margin-bottom: 10px; color: #333;">Delivery Destinations:</p>
+        <div style="background: #fff; border: 1px solid #eee; border-radius: 8px;">
+          ${deliveryStopsHtml}
+        </div>
+
+        <div class="price-display">Total: ${totalPrice}</div>
+      </div>
+
+      <div class="footer">
+        <p>The Pickars Team | <a href="mailto:support@pickars.com" style="color: #cc0000; text-decoration: none;">support@pickars.com</a></p>
+        <div class="social-links">INSTAGRAM • FACEBOOK • TIKTOK • TWITTER</div>
+      </div>
     </div>
   </body>
   </html>
