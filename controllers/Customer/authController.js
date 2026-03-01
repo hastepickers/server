@@ -69,26 +69,10 @@ exports.createAccount = async (req, res) => {
     req.body;
 
   try {
-    // 1. Normalize Phone Number
-    let formattedPhone = phoneNumber.trim().replace(/\s+/g, ""); // Remove spaces
-
-    if (formattedPhone.startsWith("234")) {
-      // If starts with 234, replace 234 with 0
-      formattedPhone = "0" + formattedPhone.slice(3);
-    } else if (!formattedPhone.startsWith("0")) {
-      // If doesn't start with 0 (and isn't 234), add 0 to the front
-      formattedPhone = "0" + formattedPhone;
-    }
-
-    // Assign the cleaned version back to phoneNumber for the rest of the logic
-    phoneNumber = formattedPhone;
-
-    // 2. Standardize other fields
     firstName = firstName.toLowerCase();
     lastName = lastName.toLowerCase();
     email = email.toLowerCase();
 
-    // 3. Check for existing user with the FORMATTED number
     const existingUser = await User.findOne({ phoneNumber });
     if (existingUser) {
       return res
@@ -99,7 +83,7 @@ exports.createAccount = async (req, res) => {
     const user = new User({
       firstName,
       lastName,
-      phoneNumber, // Saved as 0...
+      phoneNumber,
       countryCode,
       email,
       referralCode,
@@ -107,7 +91,6 @@ exports.createAccount = async (req, res) => {
 
     await user.save();
 
-    // ... Rest of your OTP and Email logic stays the same
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
@@ -121,17 +104,15 @@ exports.createAccount = async (req, res) => {
     await sendEmail(userEmail, "Verify Your Account", emailHtml);
 
     console.log(
-      `✅ Account created for ${phoneNumber}. OTP sent to ${userEmail}`
+      `Account created and OTP sent to ${userEmail} with code: ${otpCode}`
     );
 
     res.status(201).json({
       message: "Account created successfully, OTP sent for verification",
     });
   } catch (error) {
-    console.error("🔥 [CREATE ACCOUNT ERROR]:", error);
-    res
-      .status(500)
-      .json({ message: "Error creating account", error: error.message });
+    console.error("Error creating account:", error);
+    res.status(500).json({ message: "Error creating account", error });
   }
 };
 
@@ -240,7 +221,7 @@ exports.login = async (req, res) => {
       false,
       `${user.firstName} ${user.lastName}`
     );
-    // await sendEmail(user.email, "OTP for Verification", emailHtml);
+   // await sendEmail(user.email, "OTP for Verification", emailHtml);
     console.log(`📧 OTP email sent to ${user.email} ${otpCode}`);
 
     res.status(200).json({ message: "OTP sent successfully for login" });
