@@ -74,7 +74,6 @@ exports.verifyRefreshTokenDrivers = (req, res) => {
 };
 
 exports.createAccount = async (req, res) => {
-  // 1. Log the incoming request body from the mobile app
   console.log("--- INCOMING REQUEST: CREATE ACCOUNT ---");
   console.log("Request Body:", req.body);
 
@@ -86,12 +85,11 @@ exports.createAccount = async (req, res) => {
     lastName = lastName.toLowerCase();
     email = email.toLowerCase();
 
-    // 2. Log database lookup
     console.log(`Checking if user exists with phone: ${phoneNumber}`);
     const existingUser = await User.findOne({ phoneNumber });
 
     if (existingUser) {
-      console.warn(`User conflict: ${phoneNumber} already exists in MongoDB.`);
+      console.warn(`User conflict: ${phoneNumber} already exists.`);
       return res
         .status(400)
         .json({ message: "User with this phone number already exists" });
@@ -106,50 +104,56 @@ exports.createAccount = async (req, res) => {
       referralCode,
     });
 
-    // 3. Log the save attempt to DigitalOcean
-    console.log("Attempting to save user to DigitalOcean MongoDB...");
+    console.log("Attempting to save user to MongoDB...");
     await user.save();
     console.log("User successfully saved with ID:", user._id);
 
+    // --- 🛡️ OTP REFRESH LOGIC START ---
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    // 4. Log OTP creation
-    console.log(`Generating OTP: ${otpCode} for ${phoneNumber}`);
+    console.log(`Checking for existing OTP records for ${phoneNumber}...`);
+    // Delete any old OTP records for this number before creating a new one
+    await Otp.deleteMany({ phoneNumber });
+    console.log(`🗑️ Previous OTP records cleared for ${phoneNumber}`);
+
     const otpRecord = new Otp({ phoneNumber, otp: otpCode, expiresAt });
     await otpRecord.save();
-    console.log("OTP record saved to database.");
+    console.log(`✅ New OTP record [${otpCode}] saved to database.`);
+    // --- 🛡️ OTP REFRESH LOGIC END ---
 
     const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
     const userEmail = user.email;
 
-    // 5. Log Email attempt
-    console.log(`Attempting to send verification email to: ${userEmail}`);
-    const emailHtml = generateOTPEmail(otpCode, false, userName);
+    // Trigger Notifications
     const formattedPhone = formatPhoneForSMS(countryCode, phoneNumber);
     const smsMessage = `Your Pickars verification code is: ${otpCode}. Valid for 30 mins.`;
-    await sendSMS(formattedPhone, smsMessage);
 
-    await sendEmail(userEmail, "Verify Your Account", emailHtml);
-    console.log("Email sent successfully.");
+    // Send SMS (Termii)
+    try {
+      await sendSMS(formattedPhone, smsMessage);
+      console.log("📲 SMS sent successfully.");
+    } catch (smsErr) {
+      console.error("⚠️ SMS failed:", smsErr.message);
+    }
 
-    console.log(`SUCCESS: Account created for ${userEmail}. Code: ${otpCode}`);
+    // Send Email (Zoho)
+    try {
+      const emailHtml = generateOTPEmail(otpCode, false, userName);
+      await sendEmail(userEmail, "Verify Your Account", emailHtml);
+      console.log("📧 Email sent successfully.");
+    } catch (emailErr) {
+      console.error("⚠️ Email failed:", emailErr.message);
+    }
+
+    console.log(`✨ SUCCESS: Account created for ${userEmail}.`);
 
     res.status(201).json({
       message: "Account created successfully, OTP sent for verification",
     });
   } catch (error) {
-    // 6. Detailed Error Logging
     console.error("--- CRITICAL ERROR IN CREATE ACCOUNT ---");
     console.error("Error Message:", error.message);
-    console.error("Stack Trace:", error.stack);
-
-    // If it's a MongoDB error, log the specific code
-    if (error.name === "MongoNetworkError") {
-      console.error(
-        "ERROR: Could not connect to DigitalOcean. Check Trusted Sources/IPs."
-      );
-    }
 
     res
       .status(500)
@@ -168,7 +172,7 @@ exports.healthCheck = (req, res) => {
 
 exports.login = async (req, res) => {
   const { phoneNumber } = req.body;
-  console.log("📌 Login attempt for phoneNumber:", phoneNumber);
+  console.log("📌 Login attempt (No Lock) for phoneNumber:", phoneNumber);
 
   try {
     const user = await User.findOne({ phoneNumber });
@@ -180,71 +184,21 @@ exports.login = async (req, res) => {
     console.log("✅ User found:", user.email);
 
     const currentTime = new Date();
-
-    // ✅ Check if account is locked
-    if (
-      user.loginLock &&
-      user.lockExpiresAt &&
-      user.lockExpiresAt > currentTime
-    ) {
-      const remainingHours = Math.ceil(
-        (user.lockExpiresAt.getTime() - currentTime.getTime()) /
-          (1000 * 60 * 60)
-      );
-      console.log(`⛔ Account is locked. Remaining hours: ${remainingHours}`);
-      return res.status(423).json({
-        message: `Account locked due to too many OTP attempts. Try again in ${remainingHours} hour(s).`,
-      });
-    } else if (
-      user.loginLock &&
-      user.lockExpiresAt &&
-      user.lockExpiresAt <= currentTime
-    ) {
-      // Unlock account after lock expiry
-      console.log("🔓 Unlocking account after lock expiry");
-      user.loginLock = false;
-      user.lockExpiresAt = null;
-      await user.save();
-    }
-
-    let otpRecord = await Otp.findOne({ phoneNumber });
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min OTP expiry
+
     console.log("🔑 Generated OTP:", otpCode);
 
+    // Update or Create OTP record without blocking/locking
+    let otpRecord = await Otp.findOne({ phoneNumber });
+
     if (otpRecord) {
-      // Reset attempts if more than 3 hours since last attempt
-      const hoursSinceLastAttempt =
-        (currentTime.getTime() - otpRecord.lastAttemptAt.getTime()) /
-        (1000 * 60 * 60);
-      console.log(
-        "⏱ Hours since last OTP attempt:",
-        hoursSinceLastAttempt.toFixed(2)
-      );
-
-      if (hoursSinceLastAttempt >= 3) {
-        otpRecord.attempts = 0;
-        console.log("🔄 Resetting OTP attempts to 0");
-      }
-
-      // ✅ Check OTP attempts
-      if (otpRecord.attempts >= 10) {
-        user.loginLock = true;
-        user.lockExpiresAt = new Date(Date.now() + 5 * 60 * 60 * 1000); // 5 hours
-        await user.save();
-        console.log("⛔ Too many OTP attempts. Account locked for 5 hours");
-        return res.status(423).json({
-          message: "Too many OTP attempts. Account locked for 5 hours.",
-        });
-      }
-
-      // Update OTP record
       otpRecord.otp = otpCode;
       otpRecord.expiresAt = expiresAt;
-      otpRecord.attempts += 1;
+      otpRecord.attempts += 1; // Keeping count for analytics, but not blocking
       otpRecord.lastAttemptAt = currentTime;
       await otpRecord.save();
-      console.log("✅ OTP record updated:", otpRecord);
+      console.log("✅ OTP record updated");
     } else {
       otpRecord = new Otp({
         phoneNumber,
@@ -254,25 +208,41 @@ exports.login = async (req, res) => {
         lastAttemptAt: currentTime,
       });
       await otpRecord.save();
-      console.log("✅ New OTP record created:", otpRecord);
+      console.log("✅ New OTP record created");
     }
 
+    // --- TRIGGER NOTIFICATIONS ---
+
+    // 1. Email via Zoho
     const emailHtml = generateOTPEmail(
       otpCode,
       false,
       `${user.firstName} ${user.lastName}`
     );
-    // TRIGGER SMS (Termii)
-    const formattedPhone = formatPhoneForSMS(user.countryCode || "234", phoneNumber);
-    await sendSMS(formattedPhone, `Your Pickars login code is: ${otpCode}`);
-
     await sendEmail(user.email, "OTP for Verification", emailHtml);
-    console.log(`📧 OTP email sent to ${user.email} ${otpCode}`);
+    console.log(`📧 OTP email sent to ${user.email}`);
 
-    res.status(200).json({ message: "OTP sent successfully for login" });
+    // 2. SMS via Termii
+    try {
+      const formattedPhone = formatPhoneForSMS(
+        user.countryCode || "234",
+        phoneNumber
+      );
+      await sendSMS(formattedPhone, `Your Pickars login code is: ${otpCode}`);
+    } catch (smsError) {
+      console.error(
+        "⚠️ SMS failed to send, but proceeding with Email:",
+        smsError.message
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "OTP sent successfully for login",
+    });
   } catch (error) {
     console.error("❌ Error logging in:", error);
-    res.status(500).json({ message: "Error logging in", error });
+    res.status(500).json({ message: "Error logging in", error: error.message });
   }
 };
 
@@ -339,25 +309,35 @@ exports.verifyNewAccount = async (req, res) => {
 
 exports.verifyAccount = async (req, res) => {
   const { phoneNumber, otp } = req.body;
+  console.log(`\n--- 🛡️ VERIFY ACCOUNT START ---`);
+  console.log(`📱 Phone: ${phoneNumber} | 🔑 OTP: ${otp}`);
 
   try {
-    // ✅ Hardcoded auto-verification for test/demo purposes
+    // 🛠️ 1. Check for Hardcoded Test Bypass
     if (phoneNumber === "8120710198" && otp === "123456") {
+      console.log("⚠️  Bypass: Using hardcoded test credentials.");
       let user = await User.findOne({ phoneNumber });
 
       if (!user) {
+        console.log(
+          "❌ Bypass failed: Phone matches but User not found in DB."
+        );
         return res
           .status(404)
           .json({ message: "User not found", success: false });
       }
 
       if (!user.verified) {
+        console.log(`✅ Bypass: Marking user ${user.email} as verified.`);
         user.verified = true;
         await user.save();
         await createMessageSupportIfNotExists(user._id);
+      } else {
+        console.log(`ℹ️  Bypass: User ${user.email} was already verified.`);
       }
 
       const { accessToken, refreshToken } = generateTokens(user._id);
+      console.log(`✨ Bypass success: Tokens generated for ${user._id}`);
 
       return res.status(200).json({
         message: "Account verified successfully (hardcoded route)",
@@ -368,20 +348,39 @@ exports.verifyAccount = async (req, res) => {
       });
     }
 
-    // 🔒 Default verification flow
+    // 🔒 2. Default Verification Flow
+    console.log("🔍 Default flow: Checking OTP record in database...");
     const otpRecord = await Otp.findOne({ phoneNumber });
-    if (!otpRecord || otpRecord.otp !== otp) {
+
+    if (!otpRecord) {
+      console.log(`❌ Failed: No OTP record found for ${phoneNumber}`);
       return res.status(400).json({ message: "Invalid OTP", success: false });
     }
 
+    if (otpRecord.otp !== otp) {
+      console.log(
+        `❌ Failed: OTP Mismatch. DB expected [${otpRecord.otp}], User sent [${otp}]`
+      );
+      return res.status(400).json({ message: "Invalid OTP", success: false });
+    }
+
+    console.log("✅ OTP Matched. Finding User record...");
     const user = await User.findOne({ phoneNumber });
+
     if (!user) {
+      console.log(
+        `❌ Failed: OTP valid but User ${phoneNumber} does not exist.`
+      );
       return res
         .status(404)
         .json({ message: "User not found", success: false });
     }
 
+    // 3. Handle Already Verified Case
     if (user.verified) {
+      console.log(
+        `ℹ️  User ${user.email} is already verified. Reissuing tokens.`
+      );
       const { accessToken, refreshToken } = generateTokens(user._id);
       return res.status(200).json({
         message: "Account is already verified",
@@ -392,13 +391,19 @@ exports.verifyAccount = async (req, res) => {
       });
     }
 
+    // 4. Finalize Verification
+    console.log(`🔄 Finalizing: Setting verified to true and cleaning up OTP.`);
     user.verified = true;
     await user.save();
 
     await Otp.deleteOne({ phoneNumber });
+    console.log(`🗑️  OTP record deleted for ${phoneNumber}`);
+
     await createMessageSupportIfNotExists(user._id);
+    console.log(`💬 Support chat check completed.`);
 
     const { accessToken, refreshToken } = generateTokens(user._id);
+    console.log(`🏁 Success: Account verification finished for ${user.email}`);
 
     res.status(200).json({
       message: "Account verified successfully",
@@ -585,7 +590,7 @@ exports.resendOtp = async (req, res) => {
 //         // Window expired, reset counter to 1
 //         otpRecord.attempts = 1;
 //       }
-      
+
 //       otpRecord.lastAttemptAt = now;
 //     } else {
 //       // First time requesting OTP
@@ -605,19 +610,19 @@ exports.resendOtp = async (req, res) => {
 //     await otpRecord.save();
 
 //     // --- TRIGGER NOTIFICATIONS ---
-    
+
 //     // 1. Email
 //     const emailHtml = generateOTPEmail(otpCode, true, `${user.firstName} ${user.lastName}`);
 //     await sendEmail(user.email, "Resent OTP", emailHtml);
-    
+
 //     // 2. SMS (Termii)
 //     const formattedPhone = formatPhoneForSMS(user.countryCode || "234", phoneNumber);
 //     await sendSMS(formattedPhone, `Your new Pickars code is: ${otpCode}. Attempt ${otpRecord.attempts}/${MAX_ATTEMPTS}`);
 
-//     res.status(200).json({ 
+//     res.status(200).json({
 //       success: true,
 //       message: "OTP resent via SMS and Email",
-//       attemptsRemaining: MAX_ATTEMPTS - otpRecord.attempts 
+//       attemptsRemaining: MAX_ATTEMPTS - otpRecord.attempts
 //     });
 
 //   } catch (error) {
@@ -625,7 +630,6 @@ exports.resendOtp = async (req, res) => {
 //     res.status(500).json({ success: false, message: "Error resending OTP" });
 //   }
 // };
-
 
 exports.changePassword = async (req, res) => {
   const { phoneNumber, newPassword, otp } = req.body;

@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 const sendSMS = async (to, message) => {
-  const url = process.env.TERMII_BASE_URL;
+  const url = 'https://v3.api.termii.com/api/sms/send';
 
   console.log("📨 [SMS] Sending SMS...");
   console.log("➡️ URL:", url);
