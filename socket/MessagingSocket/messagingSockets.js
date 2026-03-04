@@ -19,26 +19,13 @@ const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
 const { sendSMS } = require("../../utils/sendSMS");
 
-
-const formatPhone = (countryCode, phoneNumber) => {
-  // If only one argument is provided, treat it as the full phone number
-  if (!phoneNumber) {
-    phoneNumber = countryCode;
-    countryCode = ""; 
-  }
-
-  // Ensure phoneNumber is a string and not null/undefined
-  const phoneStr = String(phoneNumber || "");
-  const codeStr = String(countryCode || "").replace("+", "");
-
-  // Clean the phone number (remove leading 0)
-  const cleanedPhone = phoneStr.startsWith("0")
-    ? phoneStr.substring(1)
-    : phoneStr;
-
-  return `${codeStr}${cleanedPhone}`;
+const formatPhone = (phone) => {
+  if (!phone) return null;
+  const trimmed = phone.toString().trim();
+  if (trimmed.startsWith("0")) return trimmed;
+  if (trimmed.startsWith("+234")) return trimmed;
+  return `+234${trimmed}`;
 };
-
 
 async function removeReceivingItemsForRide(rideId) {
   try {
