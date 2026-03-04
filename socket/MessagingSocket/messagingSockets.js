@@ -19,6 +19,17 @@ const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
 const { sendSMS } = require("../../utils/sendSMS");
 
+
+const formatPhone = (countryCode, phoneNumber) => {
+  const code = countryCode.replace("+", "");
+  const phone = phoneNumber.startsWith("0")
+    ? phoneNumber.substring(1)
+    : phoneNumber;
+  return `${code}${phone}`;
+};
+
+
+
 async function removeReceivingItemsForRide(rideId) {
   try {
     const usersToUpdate = await User.find({ "receivingItems.rideId": rideId });
