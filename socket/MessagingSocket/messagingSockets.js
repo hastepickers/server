@@ -19,12 +19,23 @@ const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
 const { sendSMS } = require("../../utils/sendSMS");
 
-const formatPhone = (phone) => {
-  if (!phone) return null;
-  const trimmed = phone.toString().trim();
-  if (trimmed.startsWith("0")) return trimmed;
-  if (trimmed.startsWith("+234")) return trimmed;
-  return `+234${trimmed}`;
+const FORMAT_PHONE = (PHONE) => {
+  if (!PHONE) return null;
+
+  // REMOVE ALL WHITESPACE AND CONVERT TO STRING
+  let CLEANED = PHONE.toString().replace(/\s+/g, "");
+
+  // CASE 1: ALREADY STARTS WITH LOCAL 0 (E.G., 0803...)
+  if (CLEANED?.startsWith("0")) return CLEANED;
+
+  // CASE 2: ALREADY HAS THE INTERNATIONAL PREFIX (E.G., +234803...)
+  if (CLEANED?.startsWith("+234")) return CLEANED;
+
+  // CASE 3: STARTS WITH NIGERIA CODE WITHOUT PLUS (E.G., 234803...)
+  if (CLEANED?.startsWith("234")) return `+${CLEANED}`;
+
+  // CASE 4: RAW NUMBER WITHOUT PREFIX (E.G., 803...)
+  return `+234${CLEANED}`;
 };
 
 async function removeReceivingItemsForRide(rideId) {
