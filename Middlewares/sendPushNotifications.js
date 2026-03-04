@@ -25,7 +25,8 @@ const sendUniversalMessage = async (userId, title, message, payload = {}) => {
     } else {
       devices = await DeviceToken.find();
       console.log(
-        `📢 Broadcast Mode: Found ${devices.length} total devices in DB.`
+        `📢 Broadcast Mode: Found ${devices.length} total devices in DB.`,
+        devices
       );
     }
 

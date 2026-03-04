@@ -694,17 +694,16 @@ exports.deleteAccount = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
     // await CustomerEarning.deleteOne({ userId: user._id }); // Uncomment if CustomerEarning is used
-    // await RequestARide.deleteMany({
-    //   $or: [{ "customer.customerId": user._id }, { "rider.userId": user._id }],
-    // });
-    // await DriversMessage.deleteMany({
-    //   $or: [
-    //     { "messages.sender": user._id.toString() },
-    //     { groupId: user._id.toString() },
-    //   ],
-    // });
+    await RequestARide.deleteMany({
+      $or: [{ "customer.customerId": user._id }, { "rider.userId": user._id }],
+    });
+    await DriversMessage.deleteMany({
+      $or: [
+        { "messages.sender": user._id.toString() },
+        { groupId: user._id.toString() },
+      ],
+    });
 
     await User.deleteOne({ phoneNumber });
 
