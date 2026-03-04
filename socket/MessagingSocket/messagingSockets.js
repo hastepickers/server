@@ -21,13 +21,23 @@ const { sendSMS } = require("../../utils/sendSMS");
 
 
 const formatPhone = (countryCode, phoneNumber) => {
-  const code = countryCode.replace("+", "");
-  const phone = phoneNumber.startsWith("0")
-    ? phoneNumber.substring(1)
-    : phoneNumber;
-  return `${code}${phone}`;
-};
+  // If only one argument is provided, treat it as the full phone number
+  if (!phoneNumber) {
+    phoneNumber = countryCode;
+    countryCode = ""; 
+  }
 
+  // Ensure phoneNumber is a string and not null/undefined
+  const phoneStr = String(phoneNumber || "");
+  const codeStr = String(countryCode || "").replace("+", "");
+
+  // Clean the phone number (remove leading 0)
+  const cleanedPhone = phoneStr.startsWith("0")
+    ? phoneStr.substring(1)
+    : phoneStr;
+
+  return `${codeStr}${cleanedPhone}`;
+};
 
 
 async function removeReceivingItemsForRide(rideId) {
