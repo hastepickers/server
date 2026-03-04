@@ -3,6 +3,8 @@ const Otp = require("../../models/Customer/Otp");
 const RequestARide = require("../../models/Customer/RequestARideSchema");
 const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
 const { sendEmail } = require("../../utils/emailUtils");
+const RequestARideSchema = require("../../models/Customer/RequestARideSchema");
+const DriversMessage = require("../../models/Customer/DriversMessage");
 
 function capitalize(str) {
   if (!str) return "";
@@ -610,3 +612,4 @@ exports.updateNotificationPreferences = async (req, res) => {
       .json({ message: "Error updating notification preferences", error });
   }
 };
+
