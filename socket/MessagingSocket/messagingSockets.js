@@ -1089,7 +1089,7 @@ const messagingSockets = (server) => {
         console.log("Socket joined room:", rideId);
 
         try {
-          const closestRider = await Rider.findById("6777ce3701ac7202127a0e6e");
+          const closestRider = await Rider.findById("69babe05aa74f859cbfb1ac8");
           if (!closestRider) {
             console.error("No rider found for ride ID:", rideId);
             socket.emit("joinedRide", {
@@ -1180,7 +1180,7 @@ const messagingSockets = (server) => {
               )
             )
           );
-          
+
           console.log("Push notifications sent to driver:", driverIdForPush);
 
           const rideSocketData = new RideSocket({
