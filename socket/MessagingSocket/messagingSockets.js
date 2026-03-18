@@ -1089,7 +1089,11 @@ const messagingSockets = (server) => {
         console.log("Socket joined room:", rideId);
 
         try {
-          const closestRider = await Rider.findById("69babe05aa74f859cbfb1ac8");
+          const randomRiders = await Rider.aggregate([
+            { $sample: { size: 1 } },
+          ]);
+
+          const closestRider = randomRiders.length > 0 ? randomRiders[0] : null;
           if (!closestRider) {
             console.error("No rider found for ride ID:", rideId);
             socket.emit("joinedRide", {
