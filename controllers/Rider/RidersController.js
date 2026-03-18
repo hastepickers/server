@@ -65,20 +65,31 @@ exports.createRider = async (req, res) => {
 // Send OTP
 exports.sendOtp = async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
-    console.log(phoneNumber, "phoneNumber");
-    // Check if rider with the phone number exists in the Rider schema
+    let { phoneNumber } = req.body;
+
+    // --- Normalization Logic ---
+    if (phoneNumber) {
+      phoneNumber = phoneNumber.toString().trim();
+      // If it starts with 90, 80, 70, etc. (missing the leading zero), add it
+      if (!phoneNumber.startsWith("0")) {
+        phoneNumber = `0${phoneNumber}`;
+      }
+    }
+    // ---------------------------
+
+    console.log(phoneNumber, "Normalized phoneNumber");
+
+    // Check if rider exists with the normalized number
     const rider = await Rider.findOne({ phoneNumber });
 
     if (!rider) {
-      // If rider does not exist, return an error
       return res.status(404).json({ message: "Rider not found" });
     }
 
     // Generate OTP
     const otp = crypto.randomInt(100000, 999999).toString();
 
-    // Save or update the OTP for the phone number in RiderOtp
+    // Save or update the OTP
     await RiderOtp.findOneAndUpdate(
       { phoneNumber },
       { phoneNumber, otp },
@@ -87,12 +98,12 @@ exports.sendOtp = async (req, res) => {
 
     console.log(`OTP for ${phoneNumber}: ${otp}`);
 
-    // Return success message
-    res
-      .status(200)
-      .json({ message: "OTP sent successfully for login", success: true });
+    res.status(200).json({ 
+      message: "OTP sent successfully for login", 
+      success: true 
+    });
   } catch (error) {
-    console.error(error); // Log error for debugging purposes
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
