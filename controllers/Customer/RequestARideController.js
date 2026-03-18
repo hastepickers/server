@@ -147,10 +147,8 @@ exports.calculateTotalDistance = async (req, res) => {
 // Create a new Request a Ride
 exports.createRide = async (req, res) => {
   try {
-    // Extract the customer ID from the token
-    const customerId = req.user.id; // ID decoded from the token in middleware
+    const customerId = req.user.id;
 
-    // Fetch the customer details from the User model
     const customer = await User.findById(customerId).select(
       "firstName lastName phoneNumber imageUrl email"
     );
@@ -158,15 +156,23 @@ exports.createRide = async (req, res) => {
       return res.status(404).json({ message: "Customer not found" });
     }
 
+    // --- Phone Number Formatting Logic ---
+    let formattedPhoneNumber = customer.phoneNumber
+      ? customer.phoneNumber.toString()
+      : "";
+
+    if (formattedPhoneNumber && !formattedPhoneNumber.startsWith("0")) {
+      formattedPhoneNumber = `0${formattedPhoneNumber}`;
+    }
+    // --------------------------------------
+
     const { deliveryDropoff, pickup, arrivalTime, typeOfVehicleId } = req.body;
 
-    // Fetch the type of vehicle details from the TypeOfVehicle model
     const typeOfVehicle = await TypeOfVehicle.findById(typeOfVehicleId);
     if (!typeOfVehicle) {
       return res.status(404).json({ message: "Type of vehicle not found" });
     }
 
-    // Create the new ride with populated customer details
     const newRide = new RequestARide({
       deliveryDropoff,
       pickup,
@@ -183,14 +189,14 @@ exports.createRide = async (req, res) => {
         plateNumber: typeOfVehicle.plateNumber,
       },
       customer: {
-        userId: customer._id, // This is the userId required by the schema
+        userId: customer._id,
         firstName: customer.firstName,
         lastName: customer.lastName,
-        phoneNumber: customer.phoneNumber,
+        phoneNumber: formattedPhoneNumber, // Use the formatted number here
         imageUrl: customer.imageUrl,
         email: customer.email,
       },
-      trackingId: generateUUID(), // Function to generate a 12-char unique tracking ID
+      trackingId: generateUUID(),
     });
 
     await newRide.save();
@@ -198,7 +204,7 @@ exports.createRide = async (req, res) => {
       .status(201)
       .json({ message: "Ride request created successfully", newRide });
   } catch (error) {
-    console.error("Error creating ride request:", error); // Log the error
+    console.error("Error creating ride request:", error);
     res.status(500).json({ message: "Error creating ride request", error });
   }
 };
