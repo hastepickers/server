@@ -61,7 +61,6 @@ exports.createRider = async (req, res) => {
   }
 };
 
-
 // Send OTP
 exports.sendOtp = async (req, res) => {
   try {
@@ -98,9 +97,9 @@ exports.sendOtp = async (req, res) => {
 
     console.log(`OTP for ${phoneNumber}: ${otp}`);
 
-    res.status(200).json({ 
-      message: "OTP sent successfully for login", 
-      success: true 
+    res.status(200).json({
+      message: "OTP sent successfully for login",
+      success: true,
     });
   } catch (error) {
     console.error(error);
@@ -108,13 +107,64 @@ exports.sendOtp = async (req, res) => {
   }
 };
 
+exports.resendOtp = async (req, res) => {
+  try {
+    let { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+
+    // --- Normalization Logic ---
+    phoneNumber = phoneNumber.toString().trim();
+    if (!phoneNumber.startsWith("0")) {
+      phoneNumber = `0${phoneNumber}`;
+    }
+    // ---------------------------
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+
+    // Use normalized phoneNumber to find/update the record
+    const otpRecord = await RidersOtp.findOneAndUpdate(
+      { phoneNumber },
+      { phoneNumber, otp },
+      { upsert: true, new: true }
+    );
+
+    console.log(`OTP resent for ${phoneNumber}: ${otp}`);
+
+    res.status(200).json({
+      message: "OTP resent successfully",
+      phoneNumber: otpRecord.phoneNumber,
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "Failed to resend OTP", error: error.message });
+  }
+};
+
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phoneNumber, otp } = req.body;
+    let { phoneNumber, otp } = req.body;
 
-    console.log(phoneNumber,'phoneNumberphoneNumber')
-    // Temporary test validation
-    if (phoneNumber === "8120710198" && otp === "123456") {
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+
+    // --- Normalization Logic ---
+    phoneNumber = phoneNumber.toString().trim();
+    if (!phoneNumber.startsWith("0")) {
+      phoneNumber = `0${phoneNumber}`;
+    }
+    // ---------------------------
+
+    console.log(phoneNumber, "Verifying Normalized Number");
+
+    // Updated Test Match to include the zero for consistency
+    if (phoneNumber === "08120710198" && otp === "123456") {
       let rider = await Rider.findOne({ phoneNumber });
       if (!rider) {
         rider = new Rider({ phoneNumber });
@@ -132,6 +182,7 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
+    // Check RiderOtp with normalized number
     const riderOtp = await RiderOtp.findOne({ phoneNumber });
     if (!riderOtp || riderOtp.otp !== otp) {
       return res
@@ -139,6 +190,7 @@ exports.verifyOtp = async (req, res) => {
         .json({ message: "Invalid or expired OTP", success: false });
     }
 
+    // Find or Create Rider with normalized number
     let rider = await Rider.findOne({ phoneNumber });
     if (!rider) {
       rider = new Rider({ phoneNumber });
@@ -159,14 +211,15 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-
 exports.updateRiderLocation = async (req, res) => {
   try {
     // const { id } = req.params;
     const { latitude, longitude, address, id } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
-      return res.status(400).json({ message: "Latitude and longitude are required." });
+      return res
+        .status(400)
+        .json({ message: "Latitude and longitude are required." });
     }
 
     const updatedRider = await Rider.findByIdAndUpdate(
@@ -191,10 +244,14 @@ exports.updateRiderLocation = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    res.status(500).json({ message: "Failed to update rider location.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Failed to update rider location.",
+        error: error.message,
+      });
   }
 };
-
 
 // Verify OTP
 // Verify OTP and Login
@@ -233,42 +290,6 @@ exports.verifyOtps = async (req, res) => {
 
 // Resend OTP
 // Resend OTP
-exports.resendOtp = async (req, res) => {
-    try {
-      const { phoneNumber } = req.body;
-      console.log(`OTP for ${phoneNumber}:`);
-      // Validate phone number input
-      if (!phoneNumber) {
-        return res.status(400).json({ message: "Phone number is required." });
-      }
-  
-      // Generate a new OTP
-      const otp = crypto.randomInt(100000, 999999).toString();
-  
-      // Check if the phone number already exists in RidersOtp
-      const otpRecord = await RidersOtp.findOneAndUpdate(
-        { phoneNumber },
-        { phoneNumber, otp },
-        { upsert: true, new: true } // Update existing or create a new document
-      );
-  
-      // Log OTP (for testing purposes; in production, send the OTP via SMS)
-      console.log(`OTP for ${phoneNumber}: ${otp}`);
-  
-      res.status(200).json({
-        message: "OTP resent successfully",
-        phoneNumber: otpRecord.phoneNumber,
-        otp: otpRecord.otp, // Include for testing; remove in production
-        success: true,
-      });
-    } catch (error) {
-      console.error(error);
-      res
-        .status(500)
-        .json({ message: "Failed to resend OTP", error: error.message });
-    }
-  };
-
 
 // exports.resendOtp = async (req, res) => {
 //   try {
