@@ -1105,6 +1105,18 @@ const messagingSockets = (server) => {
 
           console.log("Closest rider found:", closestRider._id.toString());
 
+          // const closestRider = await Rider.findById("6777ce3701ac7202127a0e6e");
+          // if (!closestRider) {
+          //   console.error("No rider found for ride ID:", rideId);
+          //   socket.emit("joinedRide", {
+          //     message: "No rider found",
+          //     error: true,
+          //   });
+          //   return;
+          // }
+
+          console.log("Closest rider found:", closestRider);
+
           io.to(rideId).emit("rideBooked", {
             ride,
             rider: closestRider,
@@ -1132,8 +1144,7 @@ const messagingSockets = (server) => {
             closestRider._id.toString()
           );
 
-          // Define 'type' here as 'pickupAlert' since this is a new ride request
-          const type = "pickupAlert"; // <--- FIX: 'type' is now defined here
+          const type = "pickupAlert";
           let title, message;
 
           if (type === "pickupAlert") {
@@ -1145,47 +1156,62 @@ const messagingSockets = (server) => {
             title = "Ride Cancelled";
             message = `The customer has cancelled this ride.`;
           } else {
-            console.log("Unknown push notification type, returning.");
-            return;
+            console.log(
+              "⚠️ Unknown push notification type, skipping push logic."
+            );
+            // We don't return here; we let the rest of the dispatch logic continue
           }
 
           const payload = {
             screen: "RideDetailsPage",
             params: { rideId: ride._id.toString(), type },
           };
-          console.log("Push notification payload:", payload);
 
           const driverIdForPush = closestRider._id.toString();
+
+          // 🔍 TOKEN LOOKUP
           const tokens = await DriverDeviceToken.find({
             userId: driverIdForPush,
           });
+
           console.log(
-            "Found device tokens for driver:",
-            driverIdForPush,
-            tokens.length
+            `📱 Found ${tokens.length} device tokens for driver: ${driverIdForPush}`
           );
 
+          // --- FIX: DO NOT STOP IF NO TOKENS ---
           if (tokens.length === 0) {
-            console.log(
-              "No iOS device tokens found for driver:",
-              driverIdForPush
+            console.warn(
+              `📢 No iOS device tokens found for driver ${driverIdForPush}. Skipping Push, but continuing dispatch...`
             );
-            return;
+          } else {
+            // Only attempt the push if tokens exist
+            try {
+              await Promise.all(
+                tokens.map(({ deviceToken }) =>
+                  sendIOSPush(
+                    deviceToken,
+                    title,
+                    message,
+                    payload,
+                    process.env.DRIVER_BUNDLE_ID
+                  )
+                )
+              );
+              console.log(
+                "✅ Push notifications successfully dispatched to driver."
+              );
+            } catch (pushError) {
+              console.error(
+                "🔥 Push Notification Service Error:",
+                pushError.message
+              );
+              // We catch the error here so the main ride-matching logic doesn't crash
+            }
           }
 
-          await Promise.all(
-            tokens.map(({ deviceToken }) =>
-              sendIOSPush(
-                deviceToken,
-                title,
-                message,
-                payload,
-                process.env.DRIVER_BUNDLE_ID
-              )
-            )
-          );
-
-          console.log("Push notifications sent to driver:", driverIdForPush);
+          // 🏁 CONTINUATION POINT
+          console.log(`🚀 Dispatching via Socket to room: ${driverIdForPush}`);
+          // Proceed with your io.to(driverIdForPush).emit(...) logic here
 
           const rideSocketData = new RideSocket({
             rideId,
@@ -1217,6 +1243,72 @@ const messagingSockets = (server) => {
         socket.emit("error", {
           message: "An error occurred while fetching the ride details",
         });
+      }
+    });
+
+    // ✅ REJOIN RIDE / STATE SYNC LOGIC
+    socket.on("rejoin_ride", async (rideId) => {
+      try {
+        console.log(`🔄 [Rejoin] Syncing state for Ride: ${rideId}`);
+
+        if (!mongoose.Types.ObjectId.isValid(rideId)) {
+          return console.error("Invalid rideId format.");
+        }
+
+        // 1. Fetch the latest ride details
+        const ride = await RequestARide.findById(rideId);
+        if (!ride) {
+          console.log(`❌ Ride ${rideId} not found.`);
+          return socket.emit("rejoin_error", { message: "Ride not found" });
+        }
+
+        // 2. Join the room for real-time updates
+        socket.join(rideId);
+
+        // 3. Handle Rider Data
+        const riderId = ride.rider?.userId;
+        let rider = null;
+        let nearbyRiders = [];
+
+        if (riderId) {
+          // If a rider is already assigned, fetch their full profile
+          rider = await Rider.findById(riderId);
+        } else if (!ride.endRide?.isEnded && !ride.acceptRide) {
+          // If NO rider is assigned yet, find the closest ones for the UI "Pairing" state
+          console.log(
+            "🔍 No rider assigned yet. Fetching closest riders for pairing UI..."
+          );
+          const pickupLat = ride.pickup?.pickupLatitude;
+          const pickupLon = ride.pickup?.pickupLongitude;
+
+          if (pickupLat && pickupLon) {
+            nearbyRiders = await getClosestRiders(pickupLat, pickupLon);
+          }
+        }
+
+        // 4. Determine Booleans for the UI
+        const isStarted = !!ride.startRide?.isStarted;
+        const isAccepted = !!ride.acceptRide;
+        const isEnded = !!ride.endRide?.isEnded;
+        const isPairing = !isAccepted && !isEnded;
+
+        // 5. Emit the standard payload
+        socket.emit("rideBooked", {
+          ride: ride,
+          rider: rider, // The assigned rider (if any)
+          closestRiders: nearbyRiders, // The 6 closest riders (if pairing)
+          pairing: isPairing,
+          acceptRide: isAccepted,
+          startRide: isStarted,
+          endRide: isEnded,
+          reportRide: false,
+        });
+
+        console.log(
+          `✅ [Rejoin] Sync Complete. Mode: ${isPairing ? "Pairing" : "Active"}`
+        );
+      } catch (error) {
+        console.error("🔥 Error in rejoin_ride handler:", error.message);
       }
     });
 

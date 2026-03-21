@@ -4,7 +4,8 @@ const {
 const Admin = require("../../models/Admin/Admin");
 const AdminOTP = require("../../models/Admin/AdminOTP");
 const jwt = require("jsonwebtoken");
-const NotificationLog = require('../../models/Admin/NotificationLog')
+const NotificationLog = require('../../models/Admin/NotificationLog');
+const { sendEmail } = require("../../utils/emailUtils");
 // Helper to generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET_ADMIN, { expiresIn: "1d" });
@@ -40,26 +41,53 @@ exports.loginRequest = async (req, res) => {
       return res.status(404).json({ message: "Admin account not found" });
     }
 
-    // Generate 6-digit OTP
+    // 1. Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Save OTP to DB (TTL will handle expiry)
+    // 2. Save OTP to DB
     await AdminOTP.create({ adminEmail: email, otp });
 
-    // --- ENHANCED CONSOLE LOG FOR DEBUGGING ---
+    // 3. Prepare Professional Email Content
+    const subject = `🔐 ${otp} is your Pickars Admin Access Code`;
+    const text = `Your Pickars Admin verification code is: ${otp}. This code expires in 10 minutes.`;
+    
+    // Premium Dark-themed HTML Template
+    const html = `
+      <div style="font-family: sans-serif; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 24px; max-width: 500px; margin: auto; border: 1px solid #1a1a1a;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="letter-spacing: -2px; font-weight: 900; font-size: 28px; margin: 0;">PICKARS<span style="color: #ef4444;">.</span></h1>
+          <p style="font-size: 10px; tracking: 0.2em; color: #666; text-transform: uppercase; margin-top: 5px;">Neural Admin Gateway</p>
+        </div>
+        
+        <div style="background-color: #0a0a0a; border: 1px solid #ffffff10; padding: 30px; border-radius: 20px; text-align: center;">
+          <p style="color: #999; font-size: 14px; margin-bottom: 10px;">Verification Code</p>
+          <h2 style="font-size: 42px; letter-spacing: 10px; color: #ffffff; margin: 0; font-family: monospace;">${otp}</h2>
+        </div>
+
+        <p style="font-size: 12px; color: #555; text-align: center; margin-top: 30px; line-height: 1.6;">
+          If you didn't request this, please ignore this email. <br/>
+          Secure session initialized for <b>${email}</b>.
+        </p>
+      </div>
+    `;
+
+    // 4. Fire the Email
+    await sendEmail(email, subject, text, html);
+
+    // --- LOG FOR POSTMAN TESTING ---
     console.log("------------------------------------------");
-    console.log(`🚀 PICKARS ADMIN LOGIN ATTEMPT`);
-    console.log(`📧 Target Email: ${email}`);
-    console.log(`🔑 SECURE OTP: ${otp}`); // This is what you'll use in Postman
+    console.log(`🚀 PICKARS ADMIN LOGIN: OTP SENT`);
+    console.log(`📧 To: ${email} | 🔑 OTP: ${otp}`);
     console.log("------------------------------------------");
 
     res.status(200).json({
-      message: "OTP sent to your email",
-      email, // Returning email back to frontend helps with the next step
+      success: true,
+      message: "Security code dispatched to your inbox.",
+      email,
     });
   } catch (error) {
     console.error("🔥 Login Request Error:", error.message);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: "Failed to dispatch security code." });
   }
 };
 /**

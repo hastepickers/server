@@ -14,8 +14,8 @@ const requestARideSchema = new mongoose.Schema(
         deliveryLatitude: { type: Number, required: true },
         deliveryLongitude: { type: Number, required: true },
         deliveryAddress: { type: String, required: true },
-        parcelId: { type: String }, // set from route
-        deliveryCode: { type: String }, // set from route
+        parcelId: { type: String },
+        deliveryCode: { type: String },
         receiverName: { type: String, required: true },
         receiverPhoneNumber: { type: String, required: true },
         receiverUserId: {
@@ -28,6 +28,11 @@ const requestARideSchema = new mongoose.Schema(
           },
         ],
         price: { type: Number },
+        deliveryImages: [
+          {
+            type: String,
+          },
+        ],
       },
     ],
 
@@ -58,7 +63,7 @@ const requestARideSchema = new mongoose.Schema(
     },
 
     rider: {
-      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "Rider" },
       firstName: { type: String },
       lastName: { type: String },
       plateNumber: { type: String },
