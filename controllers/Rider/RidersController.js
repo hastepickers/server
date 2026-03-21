@@ -63,51 +63,71 @@ exports.createRider = async (req, res) => {
 
 // Send OTP
 exports.sendOtp = async (req, res) => {
+  console.log("--------------------------------------------------");
+  console.log("📲 [sendOtp] Normalizing Phone Number for Login...");
+
   try {
     let { phoneNumber } = req.body;
 
-    // --- Normalization Logic ---
-    if (phoneNumber) {
-      phoneNumber = phoneNumber.toString().trim();
-      // If it starts with 90, 80, 70, etc. (missing the leading zero), add it
-      if (!phoneNumber.startsWith("0")) {
-        phoneNumber = `0${phoneNumber}`;
-      }
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Phone number is required" });
     }
-    // ---------------------------
 
-    console.log(phoneNumber, "Normalized phoneNumber");
+    // 1. Create both versions of the number
+    let rawNumber = phoneNumber.toString().trim();
+    let zeroNumber = rawNumber.startsWith("0") ? rawNumber : `0${rawNumber}`;
+    let noZeroNumber = rawNumber.startsWith("0")
+      ? rawNumber.substring(1)
+      : rawNumber;
 
-    // Check if rider exists with the normalized number
-    const rider = await Rider.findOne({ phoneNumber });
+    console.log(`🔍 Searching for: [${zeroNumber}] or [${noZeroNumber}]`);
+
+    // 2. Search for the rider using BOTH versions
+    let rider = await Rider.findOne({
+      phoneNumber: { $in: [zeroNumber, noZeroNumber] },
+    });
 
     if (!rider) {
+      console.error(`❌ Rider not found for number: ${phoneNumber}`);
       return res.status(404).json({ message: "Rider not found" });
     }
 
-    // Generate OTP
+    // 3. AUTO-UPDATE Logic: If the found rider is missing the zero, fix it now
+    if (rider.phoneNumber === noZeroNumber) {
+      console.log(
+        `⚠️  Found rider without leading zero. Updating to: ${zeroNumber}`
+      );
+      rider.phoneNumber = zeroNumber;
+      await rider.save();
+      console.log("✅ Rider profile updated with leading zero.");
+    }
+
+    // 4. Proceed with OTP using the corrected zeroNumber
     const otp = crypto.randomInt(100000, 999999).toString();
 
-    // Save or update the OTP
     await RiderOtp.findOneAndUpdate(
-      { phoneNumber },
-      { phoneNumber, otp },
+      { phoneNumber: zeroNumber },
+      { phoneNumber: zeroNumber, otp },
       { upsert: true, new: true }
     );
 
-    console.log(`OTP for ${phoneNumber}: ${otp}`);
+    console.log(`🎫 OTP generated for ${zeroNumber}: ${otp}`);
+    console.log("--------------------------------------------------");
 
     res.status(200).json({
       message: "OTP sent successfully for login",
       success: true,
     });
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Error in sendOtp:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
 exports.resendOtp = async (req, res) => {
+  console.log("--------------------------------------------------");
+  console.log("🔄 [resendOtp] Normalizing and Resending...");
+
   try {
     let { phoneNumber } = req.body;
 
@@ -115,23 +135,48 @@ exports.resendOtp = async (req, res) => {
       return res.status(400).json({ message: "Phone number is required." });
     }
 
-    // --- Normalization Logic ---
-    phoneNumber = phoneNumber.toString().trim();
-    if (!phoneNumber.startsWith("0")) {
-      phoneNumber = `0${phoneNumber}`;
-    }
-    // ---------------------------
+    // 1. Create both normalized versions
+    let rawNumber = phoneNumber.toString().trim();
+    let zeroNumber = rawNumber.startsWith("0") ? rawNumber : `0${rawNumber}`;
+    let noZeroNumber = rawNumber.startsWith("0")
+      ? rawNumber.substring(1)
+      : rawNumber;
 
+    console.log(
+      `🔍 Checking [${zeroNumber}] or [${noZeroNumber}] for Resend...`
+    );
+
+    // 2. Check if the Rider exists (using both versions)
+    // This is important because we shouldn't resend OTPs for numbers not in our Rider DB
+    let rider = await Rider.findOne({
+      phoneNumber: { $in: [zeroNumber, noZeroNumber] },
+    });
+
+    if (!rider) {
+      console.error(`❌ Rider not found during Resend for: ${phoneNumber}`);
+      return res.status(404).json({ message: "Rider not found" });
+    }
+
+    // 3. AUTO-UPDATE: Fix the Rider record if it's missing the zero
+    if (rider.phoneNumber === noZeroNumber) {
+      console.log(
+        `⚠️  Updating Rider record to include leading zero: ${zeroNumber}`
+      );
+      rider.phoneNumber = zeroNumber;
+      await rider.save();
+    }
+
+    // 4. Generate new OTP and update RidersOtp table using zeroNumber
     const otp = crypto.randomInt(100000, 999999).toString();
 
-    // Use normalized phoneNumber to find/update the record
     const otpRecord = await RidersOtp.findOneAndUpdate(
-      { phoneNumber },
-      { phoneNumber, otp },
+      { phoneNumber: zeroNumber },
+      { phoneNumber: zeroNumber, otp },
       { upsert: true, new: true }
     );
 
-    console.log(`OTP resent for ${phoneNumber}: ${otp}`);
+    console.log(`🎫 OTP resent for ${zeroNumber}: ${otp}`);
+    console.log("--------------------------------------------------");
 
     res.status(200).json({
       message: "OTP resent successfully",
@@ -139,10 +184,12 @@ exports.resendOtp = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ message: "Failed to resend OTP", error: error.message });
+    console.error("🔥 Error in resendOtp:", error.message);
+    res.status(500).json({
+      message: "Failed to resend OTP",
+      error: error.message,
+      success: false,
+    });
   }
 };
 
@@ -244,12 +291,10 @@ exports.updateRiderLocation = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to update rider location.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to update rider location.",
+      error: error.message,
+    });
   }
 };
 

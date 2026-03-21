@@ -22,8 +22,6 @@ if (!keyId || !teamId || !defaultBundleId) {
   );
 }
 
-// 3. Key Selection Logic
-// On Render, use the content string. Locally, use the .p8 file.
 let key = process.env.APN_KEY_CONTENT;
 
 if (!key) {

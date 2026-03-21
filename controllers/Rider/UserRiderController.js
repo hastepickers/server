@@ -266,7 +266,7 @@ exports.getRideById = async (req, res) => {
 // Update Rider's Profile
 exports.updateRiderProfile = async (req, res) => {
   try {
-    const riderId = req.riderId;
+   //const riderId = req.body.driverId;
 
     // Destructure all updatable fields from req.body
     const {
@@ -286,6 +286,7 @@ exports.updateRiderProfile = async (req, res) => {
       vehicleName,
       vehicleColor,
       email,
+      riderId
     } = req.body;
 
     // console.log(

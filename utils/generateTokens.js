@@ -10,10 +10,10 @@ const jwt = require("jsonwebtoken");
 // Function to generate access and refresh tokens
 const generateTokens = (userId) => {
   const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "120d",
+    expiresIn: "900d",
   });
   const refreshToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "120d",
+    expiresIn: "900d",
   });
 
   return { accessToken, refreshToken };
