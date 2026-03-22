@@ -251,18 +251,18 @@ router.get("/verify-payment/:orderID", async (req, res) => {
 </html>
 `;
 
-        const emailBody = `
-          Hi ${firstName},
+        // const emailBody = `
+        //   Hi ${firstName},
 
-          Your payment for ride order #${orderID} has been successfully processed.
-          
-          Amount: NGN ${amountPaid}
-          Reference: ${reference}
-          Date: ${new Date(paymentData.paid_at).toLocaleString()}
+        //   Your payment for ride order #${orderID} has been successfully processed.
 
-          Safe travels!
-          Team Pickars
-        `;
+        //   Amount: NGN ${amountPaid}
+        //   Reference: ${reference}
+        //   Date: ${new Date(paymentData.paid_at).toLocaleString()}
+
+        //   Safe travels!
+        //   Team Pickars
+        // `;
         const textFallback = `Hi ${firstName}, your payment of NGN ${
           paymentData.amount / 100
         } for ride #${orderID} was successful.`;
