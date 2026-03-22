@@ -165,160 +165,168 @@ router.get("/verify-payment/:orderID", async (req, res) => {
 
       // 2. Send Email via Zoho
       try {
-        // Calculate VAT Deductions (Nigeria VAT is 7.5%)
         const totalPaid = paymentData.amount / 100;
         const vatRate = 0.075;
         const baseAmount = totalPaid / (1 + vatRate);
         const vatAmount = totalPaid - baseAmount;
 
-        // Get Ride Locations from your database object
-        const pickUp = updatedRide.pickUpLocation?.address || "Selected Pickup";
-        const dropOff =
-          updatedRide.dropOffLocation?.address || "Selected Destination";
+        // Data from your Mongoose Schema
+        const pickupAddr = updatedRide.pickup?.pickupAddress;
+        const dropoffs = updatedRide.deliveryDropoff || [];
+        const rider = updatedRide.rider;
+        const firstName = updatedRide.customer?.firstName || "Customer";
 
-        const subject = "Payment Confirmed - Pickars";
+        const subject = `Receipt for Trip #${updatedRide.trackingId.slice(
+          0,
+          8
+        )}`;
+
         const htmlReceipt = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F9FA; margin: 0; padding: 20px; }
-            .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #EEEEEE; }
-            .header { padding: 32px 24px; text-align: left; }
-            .brand-text { color: #FF0000; font-size: 24px; font-weight: 900; letter-spacing: 2px; }
-            .status-badge { float: right; padding: 6px 14px; border-radius: 50px; background-color: #FFF0F0; color: #FF0000; font-weight: 700; font-size: 11px; margin-top: 5px; }
+            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background-color: #F9F9F9; margin: 0; padding: 20px; color: #1A1A1A; }
+            .container { max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #EEE; }
+            .brand-header { padding: 25px; background: #FFF; display: flex; justify-content: space-between; align-items: center; }
+            .hero { background: #1A1A1A; color: white; padding: 35px 20px; text-align: center; }
+            .hero-amount { font-size: 38px; font-weight: 800; margin-top: 5px; color: #FF0000; }
             
-            .amount-card { background: #1C1C1E; color: #ffffff; margin: 0 20px; border-radius: 16px; padding: 30px 20px; text-align: center; }
-            .amount-label { color: #AEAEB2; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-            .main-amount { font-size: 40px; font-weight: 800; margin: 0; }
+            .section { padding: 20px; border-bottom: 1px solid #F1F1F1; }
+            .label { font-size: 10px; font-weight: 700; color: #8E8E93; text-transform: uppercase; margin-bottom: 4px; display: block; }
             
-            .breakdown-section { padding: 24px; }
-            .breakdown-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #636366; }
-            .breakdown-total { border-top: 1px solid #F2F2F7; padding-top: 10px; margin-top: 10px; font-weight: 700; color: #1C1C1E; }
-        
-            .info-section { padding: 0 24px 24px; }
-            .section-title { color: #8E8E93; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 15px; border-bottom: 1px solid #F2F2F7; padding-bottom: 5px; }
-            
-            .detail-row { margin-bottom: 12px; }
-            .detail-label { font-size: 12px; color: #8E8E93; display: block; margin-bottom: 2px; }
-            .detail-value { font-size: 14px; color: #1C1C1E; font-weight: 500; line-height: 1.4; }
-        
-            .route-container { background: #F2F2F7; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
-            .dot { color: #FF0000; font-size: 18px; margin-right: 8px; }
-        
-            .footer { text-align: center; padding: 30px 24px; color: #AEAEB2; font-size: 12px; line-height: 1.6; }
-            .clearfix { clear: both; }
+            /* Route Stepper */
+            .route-box { padding-left: 15px; border-left: 2px solid #EEE; margin-left: 10px; }
+            .stop { position: relative; margin-bottom: 15px; }
+            .stop:last-child { margin-bottom: 0; }
+            .dot { position: absolute; left: -22px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #FF0000; border: 2px solid #FFF; }
+            .address { font-size: 13px; font-weight: 500; color: #333; }
+
+            /* Rider Card */
+            .rider-card { display: flex; align-items: center; background: #F8F9FA; padding: 12px; border-radius: 12px; }
+            .rider-img { width: 45px; height: 45px; border-radius: 50%; background: #DDD; margin-right: 12px; object-fit: cover; }
+            .rider-info { font-size: 13px; font-weight: 600; }
+            .vehicle { font-size: 11px; color: #666; font-weight: 400; }
+
+            .fare-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
+            .footer { padding: 25px; text-align: center; font-size: 12px; color: #8E8E93; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <span class="brand-text">PICKARS</span>
-              <div class="status-badge">PAID</div>
-              <div class="clearfix"></div>
+            <div class="brand-header">
+              <span style="font-weight: 900; font-size: 22px; color: #FF0000;">PICKARS</span>
+              <span style="font-size: 11px; font-weight: 700; color: #28A745;">COMPLETED</span>
             </div>
-        
-            <div class="amount-card">
-              <div class="amount-label">Transaction Total</div>
-              <h1 class="main-amount">₦${totalPaid.toLocaleString("en-NG", {
+
+            <div class="hero">
+              <span style="font-size: 12px; opacity: 0.7;">TOTAL PAID</span>
+              <div class="hero-amount">₦${totalPaid.toLocaleString("en-NG", {
                 minimumFractionDigits: 2,
-              })}</h1>
+              })}</div>
             </div>
-        
-            <div class="breakdown-section">
-              <div class="breakdown-row">
-                <span>Base Fare</span>
+
+            <!-- RIDER INFO -->
+            ${
+              rider?.firstName
+                ? `
+            <div class="section">
+              <span class="label">Your Rider</span>
+              <div class="rider-card">
+                ${
+                  rider.imageUrl
+                    ? `<img src="${rider.imageUrl}" class="rider-img">`
+                    : '<div class="rider-img"></div>'
+                }
+                <div class="rider-info">
+                  ${rider.firstName} ${rider.lastName || ""}
+                  <div class="vehicle">${
+                    rider.vehicleName || "Dispatch Bike"
+                  } • ${rider.plateNumber || ""}</div>
+                </div>
+              </div>
+            </div>`
+                : ""
+            }
+
+            <!-- TRIP ROUTE -->
+            <div class="section">
+              <span class="label">Trip Route</span>
+              <div class="route-box">
+                <div class="stop">
+                  <div class="dot" style="background: #CCC;"></div>
+                  <span class="label" style="margin:0">Pickup</span>
+                  <span class="address">${pickupAddr || "Office Pickup"}</span>
+                </div>
+                ${dropoffs
+                  .map(
+                    (d) => `
+                  <div class="stop">
+                    <div class="dot"></div>
+                    <span class="label" style="margin:0">Drop-off to ${d.receiverName}</span>
+                    <span class="address">${d.deliveryAddress}</span>
+                  </div>
+                `
+                  )
+                  .join("")}
+              </div>
+            </div>
+
+            <!-- PAYMENT SPECS -->
+            <div class="section">
+              <div style="display: flex; justify-content: space-between;">
+                <div>
+                  <span class="label">Date</span>
+                  <span style="font-size: 13px; font-weight: 600;">${new Date().toLocaleDateString(
+                    "en-GB"
+                  )}</span>
+                </div>
+                <div style="text-align: right;">
+                  <span class="label">Reference</span>
+                  <span style="font-size: 13px; font-weight: 600;">${updatedRide.trackingId
+                    .slice(0, 8)
+                    .toUpperCase()}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- FARE BREAKDOWN -->
+            <div class="section" style="background: #FAFAFA; border-bottom: none;">
+              <div class="fare-row">
+                <span style="color: #666;">Base Fare</span>
                 <span>₦${baseAmount.toLocaleString("en-NG", {
                   minimumFractionDigits: 2,
                 })}</span>
               </div>
-              <div class="breakdown-row">
-                <span>VAT (7.5%)</span>
+              <div class="fare-row">
+                <span style="color: #666;">VAT (7.5%)</span>
                 <span>₦${vatAmount.toLocaleString("en-NG", {
                   minimumFractionDigits: 2,
                 })}</span>
               </div>
-              <div class="breakdown-row breakdown-total">
-                <span>Total Paid</span>
+              <div class="fare-row" style="margin-top: 10px; font-weight: 800; border-top: 1px solid #EEE; padding-top: 10px; color: #FF0000;">
+                <span>Total</span>
                 <span>₦${totalPaid.toLocaleString("en-NG", {
                   minimumFractionDigits: 2,
                 })}</span>
               </div>
             </div>
-        
-            <div class="info-section">
-              <div class="section-title">RIDE DETAILS</div>
-              <div class="route-container">
-                <div class="detail-row">
-                  <span class="detail-label">PICKUP</span>
-                  <span class="detail-value">${pickUp}</span>
-                </div>
-                <div style="height: 10px; border-left: 2px dotted #AEAEB2; margin: -5px 0 5px 5px;"></div>
-                <div class="detail-row" style="margin-bottom: 0;">
-                  <span class="detail-label">DROPOFF</span>
-                  <span class="detail-value">${dropOff}</span>
-                </div>
-              </div>
-        
-              <div class="section-title">PAYMENT INFORMATION</div>
-              <table width="100%" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td style="padding-bottom: 10px;">
-                    <span class="detail-label">DATE</span>
-                    <span class="detail-value">${new Date(
-                      paymentData.paid_at
-                    ).toLocaleDateString()}</span>
-                  </td>
-                  <td style="padding-bottom: 10px; text-align: right;">
-                    <span class="detail-label">METHOD</span>
-                    <span class="detail-value">${paymentData.channel.toUpperCase()}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    <span class="detail-label">REFERENCE</span>
-                    <span class="detail-value">${reference.slice(
-                      0,
-                      12
-                    )}...</span>
-                  </td>
-                  <td style="text-align: right;">
-                    <span class="detail-label">ORDER ID</span>
-                    <span class="detail-value">#${orderID.slice(-6)}</span>
-                  </td>
-                </tr>
-              </table>
-            </div>
-        
+
             <div class="footer">
-              <p style="color: #FF0000; font-weight: 700; margin-bottom: 5px;">Safe travels, ${firstName}!</p>
-              <p>This receipt is automatically generated for your records.<br/>
-              Need help? Contact support@pickars.com</p>
+              <p>Thank you for choosing <strong>Pickars</strong>, ${firstName}!</p>
+              <p>Tracking ID: ${updatedRide.trackingId}</p>
             </div>
           </div>
         </body>
-        </html>
-        `;
+        </html>`;
 
-        // const emailBody = `
-        //   Hi ${firstName},
-
-        //   Your payment for ride order #${orderID} has been successfully processed.
-
-        //   Amount: NGN ${amountPaid}
-        //   Reference: ${reference}
-        //   Date: ${new Date(paymentData.paid_at).toLocaleString()}
-
-        //   Safe travels!
-        //   Team Pickars
-        // `;
-        const textFallback = `Hi ${firstName}, your payment of NGN ${
-          paymentData.amount / 100
-        } for ride #${orderID} was successful.`;
-        // Pass the htmlReceipt variable created above as the 4th argument
-        await sendEmail(customerEmail, subject, textFallback, htmlReceipt);
+        await sendEmail(
+          customerEmail,
+          subject,
+          "Your Pickars Receipt",
+          htmlReceipt
+        );
       } catch (emailErr) {
         console.error("Email notification failed:", emailErr.message);
       }
