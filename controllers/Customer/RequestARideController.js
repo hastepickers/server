@@ -158,10 +158,18 @@ exports.createRide = async (req, res) => {
 
     // --- Phone Number Formatting Logic ---
     let formattedPhoneNumber = customer.phoneNumber
-      ? customer.phoneNumber.toString()
+      ? customer.phoneNumber.toString().trim()
       : "";
 
-    if (formattedPhoneNumber && !formattedPhoneNumber.startsWith("0")) {
+    if (formattedPhoneNumber) {
+      // 1. Remove '+', '234', or any non-numeric characters at the start
+      // This handles +234..., 234..., and accidental spaces
+      formattedPhoneNumber = formattedPhoneNumber.replace(
+        /^(\+234|234|0+)/,
+        ""
+      );
+
+      // 2. Prepend a single '0' to the remaining digits
       formattedPhoneNumber = `0${formattedPhoneNumber}`;
     }
     // --------------------------------------
@@ -192,7 +200,7 @@ exports.createRide = async (req, res) => {
         userId: customer._id,
         firstName: customer.firstName,
         lastName: customer.lastName,
-        phoneNumber: formattedPhoneNumber, // Use the formatted number here
+        phoneNumber: formattedPhoneNumber,
         imageUrl: customer.imageUrl,
         email: customer.email,
       },
