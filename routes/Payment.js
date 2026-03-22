@@ -147,25 +147,110 @@ router.get("/verify-payment/:orderID", async (req, res) => {
       const firstName = updatedRide.customer?.firstName || "Customer";
 
       // 1. Send SMS via Termii
-      if (customerPhone) {
-        try {
-          // Format phone: remove '+' and spaces for Termii
-          const cleanPhone = customerPhone
-            .toString()
-            .replace(/\s+/g, "")
-            .replace("+", "");
-          const smsMsg = `Hi ${firstName}, your payment of NGN ${amountPaid} for ride #${orderID.slice(
-            -6
-          )} was successful. Thank you for choosing Pickars!`;
-          await sendSMS(cleanPhone, smsMsg);
-        } catch (smsErr) {
-          console.error("SMS notification failed:", smsErr.message);
-        }
-      }
+      // if (customerPhone) {
+      //   try {
+      //     // Format phone: remove '+' and spaces for Termii
+      //     const cleanPhone = customerPhone
+      //       .toString()
+      //       .replace(/\s+/g, "")
+      //       .replace("+", "");
+      //     const smsMsg = `Hi ${firstName}, your payment of NGN ${amountPaid} for ride #${orderID.slice(
+      //       -6
+      //     )} was successful. Thank you for choosing Pickars!`;
+      //     await sendSMS(cleanPhone, smsMsg);
+      //   } catch (smsErr) {
+      //     console.error("SMS notification failed:", smsErr.message);
+      //   }
+      // }
 
       // 2. Send Email via Zoho
       try {
         const subject = "Payment Confirmed - Pickars";
+
+        const htmlReceipt = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 20px; }
+    .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { padding: 32px 24px; text-align: center; }
+    .logo { width: 80px; height: 80px; margin-bottom: 16px; }
+    .status-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; background-color: #E8F5E9; color: #2E7D32; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    .amount-section { text-align: center; padding: 0 24px 32px; }
+    .label { color: #8E8E93; font-size: 14px; margin-bottom: 8px; }
+    .amount { font-size: 42px; font-weight: 800; color: #1C1C1E; margin: 0; }
+    .dashed-line { border-top: 1px dashed #E5E5EA; margin: 0 24px; height: 1px; }
+    .info-section { padding: 24px; }
+    .section-title { color: #8E8E93; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-bottom: 16px; }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; }
+    .info-label { color: #636366; }
+    .info-value { color: #1C1C1E; font-weight: 600; text-align: right; }
+    .footer { text-align: center; padding: 24px; color: #AEAEB2; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://your-domain.com/assets/newlogored.png" alt="Pickars Logo" class="logo">
+      <br/>
+      <div class="status-badge">Payment Successful</div>
+    </div>
+
+    <div class="amount-section">
+      <p class="label">Total Amount Paid</p>
+      <h1 class="amount">₦${(paymentData.amount / 100).toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+      })}</h1>
+    </div>
+
+    <div class="dashed-line"></div>
+
+    <div class="info-section">
+      <div class="section-title">TRANSACTION DETAILS</div>
+      <div class="info-row">
+        <span class="info-label">Date & Time</span>
+        <span class="info-value">${new Date(
+          paymentData.paid_at
+        ).toLocaleString()}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Reference</span>
+        <span class="info-value">${reference}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Payment Method</span>
+        <span class="info-value">${paymentData.channel.toUpperCase()}</span>
+      </div>
+    </div>
+
+    <div style="height: 1px; background: #F2F2F7; margin: 0 24px;"></div>
+
+    <div class="info-section">
+      <div class="section-title">CUSTOMER INFO</div>
+      <div class="info-row">
+        <span class="info-label">Billed To</span>
+        <span class="info-value">${firstName}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Email</span>
+        <span class="info-value">${customerEmail}</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Thank you for choosing Pickars!</p>
+      <p>This is a computer-generated receipt for ride #${orderID.slice(
+        -6
+      )}.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
         const emailBody = `
           Hi ${firstName},
 
@@ -178,7 +263,11 @@ router.get("/verify-payment/:orderID", async (req, res) => {
           Safe travels!
           Team Pickars
         `;
-        await sendEmail(customerEmail, subject, emailBody);
+        const textFallback = `Hi ${firstName}, your payment of NGN ${
+          paymentData.amount / 100
+        } for ride #${orderID} was successful.`;
+        // Pass the htmlReceipt variable created above as the 4th argument
+        await sendEmail(customerEmail, subject, textFallback, htmlReceipt);
       } catch (emailErr) {
         console.error("Email notification failed:", emailErr.message);
       }
