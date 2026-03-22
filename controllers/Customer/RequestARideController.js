@@ -156,23 +156,31 @@ exports.createRide = async (req, res) => {
       return res.status(404).json({ message: "Customer not found" });
     }
 
-    // --- Phone Number Formatting Logic ---
-    let formattedPhoneNumber = customer.phoneNumber
-      ? customer.phoneNumber.toString().trim()
-      : "";
+    const formatPhoneForSMS = (countryCode, phoneNumber) => {
+      const code = countryCode.replace("+", "");
+      const phone = phoneNumber.startsWith("0")
+        ? phoneNumber.substring(1)
+        : phoneNumber;
+      return `${code}${phone}`;
+    };
 
-    if (formattedPhoneNumber) {
-      // 1. Remove '+', '234', or any non-numeric characters at the start
-      // This handles +234..., 234..., and accidental spaces
-      formattedPhoneNumber = formattedPhoneNumber.replace(
-        /^(\+234|234|0+)/,
-        ""
-      );
+    // // --- Phone Number Formatting Logic ---
+    // let formattedPhoneNumber = customer.phoneNumber
+    //   ? customer.phoneNumber.toString().trim()
+    //   : "";
 
-      // 2. Prepend a single '0' to the remaining digits
-      formattedPhoneNumber = `0${formattedPhoneNumber}`;
-    }
-    // --------------------------------------
+    // if (formattedPhoneNumber) {
+    //   // 1. Remove '+', '234', or any non-numeric characters at the start
+    //   // This handles +234..., 234..., and accidental spaces
+    //   formattedPhoneNumber = formattedPhoneNumber.replace(
+    //     /^(\+234|234|0+)/,
+    //     ""
+    //   );
+
+    //   // 2. Prepend a single '0' to the remaining digits
+    //   formattedPhoneNumber = `0${formattedPhoneNumber}`;
+    // }
+    // // --------------------------------------
 
     const { deliveryDropoff, pickup, arrivalTime, typeOfVehicleId } = req.body;
 
@@ -180,7 +188,10 @@ exports.createRide = async (req, res) => {
     if (!typeOfVehicle) {
       return res.status(404).json({ message: "Type of vehicle not found" });
     }
-
+    const formattedPhone = formatPhoneForSMS(
+      customer?.countryCode || "234",
+      customer?.phoneNumber
+    );
     const newRide = new RequestARide({
       deliveryDropoff,
       pickup,
@@ -200,13 +211,14 @@ exports.createRide = async (req, res) => {
         userId: customer._id,
         firstName: customer.firstName,
         lastName: customer.lastName,
-        phoneNumber: formattedPhoneNumber,
+        phoneNumber: formattedPhone,
         imageUrl: customer.imageUrl,
         email: customer.email,
       },
       trackingId: generateUUID(),
     });
 
+    console.warn(formattedPhone, "formattedPhoneNumber");
     await newRide.save();
     res
       .status(201)
