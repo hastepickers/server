@@ -495,10 +495,26 @@ exports.resendOtp = async (req, res) => {
   console.log(`🔄 [resendOtp] START: Request for ${phoneNumber}`);
 
   try {
-    // 1. Find User
-    const user = await User.findOne({ phoneNumber });
+    if (!phoneNumber) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+
+    // 1. 🧹 CLEAN PHONE NUMBER: Normalize for Database Lookup
+    let cleanedPhone = phoneNumber.toString().trim();
+    if (cleanedPhone.startsWith("0")) {
+      cleanedPhone = cleanedPhone.substring(1);
+      console.log(
+        `🧼 [resendOtp] Normalized: ${phoneNumber} -> ${cleanedPhone}`
+      );
+    }
+
+    // 2. 🔍 SEARCH: Check both "803..." and "0803..." formats
+    const user = await User.findOne({
+      $or: [{ phoneNumber: cleanedPhone }, { phoneNumber: `0${cleanedPhone}` }],
+    });
+
     if (!user) {
-      console.warn(`❌ [resendOtp] User not found: ${phoneNumber}`);
+      console.warn(`❌ [resendOtp] User not found for: ${cleanedPhone}`);
       return res.status(404).json({ message: "User does not exist" });
     }
 
@@ -506,7 +522,7 @@ exports.resendOtp = async (req, res) => {
       `👤 [resendOtp] User found: ${user.firstName} ${user.lastName}`
     );
 
-    // 2. Check Security Locks
+    // 3. 🔒 SECURITY LOCKS
     if (user.loginLock && user.loginLockUntil) {
       if (new Date() < user.loginLockUntil) {
         console.warn(
@@ -517,14 +533,15 @@ exports.resendOtp = async (req, res) => {
             "Account locked due to too many OTP attempts. Try again later.",
         });
       } else {
-        console.log("🔓 [resendOtp] Lock expired. Resetting user lock status.");
+        console.log("🔓 [resendOtp] Lock expired. Resetting status.");
         user.loginLock = false;
         user.loginLockUntil = null;
         await user.save();
       }
     }
 
-    // 3. Rate Limiting & Attempt Tracking
+    // 4. 📊 RATE LIMITING & ATTEMPT TRACKING
+    // Note: We search the Otp record using the raw phoneNumber from request for consistency
     let otpRecord = await Otp.findOne({ phoneNumber });
     const now = new Date();
 
@@ -533,20 +550,18 @@ exports.resendOtp = async (req, res) => {
       const windowMs = ATTEMPT_WINDOW_HOURS * 60 * 60 * 1000;
 
       if (timeSinceLast > windowMs) {
-        console.log(
-          `🕒 [resendOtp] Window reset (> ${ATTEMPT_WINDOW_HOURS}h). Clearing attempts.`
-        );
+        console.log(`🕒 [resendOtp] Window reset. Clearing old attempts.`);
         otpRecord.attempts = 0;
       }
 
       otpRecord.attempts += 1;
       otpRecord.lastAttemptAt = now;
       console.log(
-        `📊 [resendOtp] Attempt count: ${otpRecord.attempts}/${MAX_OTP_ATTEMPTS}`
+        `📈 [resendOtp] Attempt count: ${otpRecord.attempts}/${MAX_OTP_ATTEMPTS}`
       );
 
       if (otpRecord.attempts > MAX_OTP_ATTEMPTS) {
-        console.error("🚫 [resendOtp] MAX ATTEMPTS REACHED. Locking user.");
+        console.error("🚫 [resendOtp] MAX ATTEMPTS. Locking account.");
         user.loginLock = true;
         user.loginLockUntil = new Date(
           Date.now() + LOCK_DURATION_HOURS * 60 * 60 * 1000
@@ -562,21 +577,21 @@ exports.resendOtp = async (req, res) => {
       otpRecord = new Otp({ phoneNumber, attempts: 1, lastAttemptAt: now });
     }
 
-    // 4. Generate & Save OTP
+    // 5. 🎫 GENERATE & SAVE OTP
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     otpRecord.otp = otpCode;
     otpRecord.expiresAt = expiresAt;
     await otpRecord.save();
 
-    console.log(`🎫 [resendOtp] OTP Saved: ${otpCode}`);
+    console.log(`✅ [resendOtp] OTP ${otpCode} saved for ${phoneNumber}`);
 
-    // 5. Send Email (Awaited to ensure SMTP connection)
+    // 6. 📧 SEND EMAIL
     const emailHtml = generateOTPEmail(otpCode, true, user.firstName);
     await sendEmail(user.email, "Your Pickars OTP", emailHtml);
     console.log(`📧 [resendOtp] Email sent to ${user.email}`);
 
-    // 6. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking IIFE)
+    // 7. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking)
     (async () => {
       try {
         console.log(`📡 [Background-WA] Sending to ${phoneNumber}...`);
@@ -584,26 +599,23 @@ exports.resendOtp = async (req, res) => {
           phoneNumber,
           `Your new Pickars code is: ${otpCode}. Valid for 30 mins. 🚗`
         );
-        console.log(`✅ [Background-WA] Delivered to ${phoneNumber}`);
+        console.log(`✅ [Background-WA] Delivered.`);
       } catch (waErr) {
         console.error(`⚠️ [Background-WA] Failed: ${waErr.message}`);
-        // Logic remains safe; user already has their response
       }
     })();
 
-    console.log(`✨ [resendOtp] COMPLETED SUCCESSFULLY for ${phoneNumber}`);
+    console.log(`✨ [resendOtp] COMPLETED SUCCESSFULLY`);
     console.log("--------------------------------------------------");
 
-    return res.status(200).json({
-      message: "OTP resent successfully",
-      success: true,
-    });
+    return res
+      .status(200)
+      .json({ message: "OTP resent successfully", success: true });
   } catch (error) {
-    console.error("🔥 [resendOtp] CRITICAL SYSTEM ERROR:", error);
-    return res.status(500).json({
-      message: "Error resending OTP",
-      error: error.message,
-    });
+    console.error("🔥 [resendOtp] CRITICAL ERROR:", error);
+    return res
+      .status(500)
+      .json({ message: "Error resending OTP", error: error.message });
   }
 };
 
