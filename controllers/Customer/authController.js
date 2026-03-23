@@ -542,7 +542,14 @@ exports.resendOtp = async (req, res) => {
 
     // 4. 📊 RATE LIMITING & ATTEMPT TRACKING
     // Note: We search the Otp record using the raw phoneNumber from request for consistency
-    let otpRecord = await Otp.findOne({ phoneNumber });
+    let otpRecord = await Otp.findOne({ 
+      $or: [
+        { phoneNumber: cleanedPhone }, 
+        { phoneNumber: `0${cleanedPhone}` },
+        { phoneNumber: phoneNumber } // Also check the raw input just in case
+      ] 
+    });
+    
     const now = new Date();
 
     if (otpRecord) {

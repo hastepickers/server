@@ -65,66 +65,62 @@ exports.createRider = async (req, res) => {
 // Send OTP
 exports.sendOtp = async (req, res) => {
   console.log("--------------------------------------------------");
-  console.log("📲 [sendOtp] Normalizing Phone Number for Login...");
+  console.log("📲 [sendOtp] Normalizing Phone Number for Pilot Login...");
 
   try {
     let { phoneNumber } = req.body;
-
     if (!phoneNumber) {
       return res.status(400).json({ message: "Phone number is required" });
     }
 
-    // 1. Create both versions of the number
+    // 1. Create normalized versions
     let rawNumber = phoneNumber.toString().trim();
     let zeroNumber = rawNumber.startsWith("0") ? rawNumber : `0${rawNumber}`;
-    let noZeroNumber = rawNumber.startsWith("0")
-      ? rawNumber.substring(1)
-      : rawNumber;
+    let noZeroNumber = rawNumber.startsWith("0") ? rawNumber.substring(1) : rawNumber;
 
-    console.log(`🔍 Searching for: [${zeroNumber}] or [${noZeroNumber}]`);
+    console.log(`🔍 [sendOtp] Searching for: [${zeroNumber}] or [${noZeroNumber}]`);
 
-    // 2. Search for the rider using BOTH versions
+    // 2. Search Rider
     let rider = await Rider.findOne({
       phoneNumber: { $in: [zeroNumber, noZeroNumber] },
     });
 
     if (!rider) {
-      console.error(`❌ Rider not found for number: ${phoneNumber}`);
+      console.error(`❌ [sendOtp] Rider not found: ${phoneNumber}`);
       return res.status(404).json({ message: "Rider not found" });
     }
 
-    // 3. AUTO-UPDATE Logic: If the found rider is missing the zero, fix it now
+    // 3. AUTO-UPDATE: Sync format to leading zero
     if (rider.phoneNumber === noZeroNumber) {
-      console.log(
-        `⚠️  Found rider without leading zero. Updating to: ${zeroNumber}`
-      );
       rider.phoneNumber = zeroNumber;
       await rider.save();
-      console.log("✅ Rider profile updated with leading zero.");
+      console.log("✅ [sendOtp] Rider profile updated with leading zero.");
     }
 
-    // 4. Proceed with OTP using the corrected zeroNumber
+    // 4. Generate & Save OTP
     const otp = crypto.randomInt(100000, 999999).toString();
-
     await RiderOtp.findOneAndUpdate(
       { phoneNumber: zeroNumber },
       { phoneNumber: zeroNumber, otp },
       { upsert: true, new: true }
     );
 
-    console.log(`🎫 OTP generated for ${zeroNumber}: ${otp}`);
-    console.log("--------------------------------------------------");
-    try {
-      const waMsg = `Your new Pickars code is: ${otp}. Valid for 30 mins.`;
-      await sendWhatsApp(zeroNumber, waMsg);
-    } catch (waErr) {
-      console.error("WhatsApp resend failed:", waErr.message);
-    }
+    console.log(`🎫 [sendOtp] OTP generated for ${zeroNumber}: ${otp}`);
 
-    res.status(200).json({
-      message: "OTP sent successfully for login",
-      success: true,
-    });
+    // 5. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking)
+    (async () => {
+      try {
+        console.log(`📡 [Background-WA] Sending OTP to Pilot: ${zeroNumber}`);
+        await sendWhatsApp(zeroNumber, `Your Pickars Pilot login code is: ${otp}. Valid for 30 mins.`);
+        console.log(`✅ [Background-WA] Delivered to Pilot.`);
+      } catch (waErr) {
+        console.error(`⚠️ [Background-WA] WhatsApp failed: ${waErr.message}`);
+      }
+    })();
+
+    console.log("--------------------------------------------------");
+    res.status(200).json({ message: "OTP sent successfully for login", success: true });
+
   } catch (error) {
     console.error("🔥 Error in sendOtp:", error.message);
     res.status(500).json({ error: error.message });
@@ -133,65 +129,52 @@ exports.sendOtp = async (req, res) => {
 
 exports.resendOtp = async (req, res) => {
   console.log("--------------------------------------------------");
-  console.log("🔄 [resendOtp] Normalizing and Resending...");
+  console.log("🔄 [resendOtp] Normalizing and Resending to Pilot...");
 
   try {
     let { phoneNumber } = req.body;
-
     if (!phoneNumber) {
       return res.status(400).json({ message: "Phone number is required." });
     }
 
-    // 1. Create both normalized versions
     let rawNumber = phoneNumber.toString().trim();
     let zeroNumber = rawNumber.startsWith("0") ? rawNumber : `0${rawNumber}`;
-    let noZeroNumber = rawNumber.startsWith("0")
-      ? rawNumber.substring(1)
-      : rawNumber;
+    let noZeroNumber = rawNumber.startsWith("0") ? rawNumber.substring(1) : rawNumber;
 
-    console.log(
-      `🔍 Checking [${zeroNumber}] or [${noZeroNumber}] for Resend...`
-    );
-
-    // 2. Check if the Rider exists (using both versions)
-    // This is important because we shouldn't resend OTPs for numbers not in our Rider DB
     let rider = await Rider.findOne({
       phoneNumber: { $in: [zeroNumber, noZeroNumber] },
     });
 
     if (!rider) {
-      console.error(`❌ Rider not found during Resend for: ${phoneNumber}`);
       return res.status(404).json({ message: "Rider not found" });
     }
 
-    // 3. AUTO-UPDATE: Fix the Rider record if it's missing the zero
     if (rider.phoneNumber === noZeroNumber) {
-      console.log(
-        `⚠️  Updating Rider record to include leading zero: ${zeroNumber}`
-      );
       rider.phoneNumber = zeroNumber;
       await rider.save();
     }
 
-    // 4. Generate new OTP and update RidersOtp table using zeroNumber
     const otp = crypto.randomInt(100000, 999999).toString();
-
-    const otpRecord = await RidersOtp.findOneAndUpdate(
+    const otpRecord = await RiderOtp.findOneAndUpdate(
       { phoneNumber: zeroNumber },
       { phoneNumber: zeroNumber, otp },
       { upsert: true, new: true }
     );
 
-    console.log(`🎫 OTP resent for ${zeroNumber}: ${otp}`);
-    console.log("--------------------------------------------------");
+    console.log(`🎫 [resendOtp] OTP resent for ${zeroNumber}: ${otp}`);
 
-    try {
-      const waMsg = `Your new Pickars code is: ${otp}. Valid for 30 mins.`;
-      await sendWhatsApp(zeroNumber, waMsg);
-    } catch (waErr) {
-      console.error("WhatsApp resend failed:", waErr.message);
-    }
-    
+    // 5. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking)
+    (async () => {
+      try {
+        console.log(`📡 [Background-WA] Resending OTP to Pilot: ${zeroNumber}`);
+        await sendWhatsApp(zeroNumber, `Your new Pickars Pilot login code is: ${otp}`);
+        console.log(`✅ [Background-WA] Delivered.`);
+      } catch (waErr) {
+        console.error(`⚠️ [Background-WA] WhatsApp failed: ${waErr.message}`);
+      }
+    })();
+
+    console.log("--------------------------------------------------");
     res.status(200).json({
       message: "OTP resent successfully",
       phoneNumber: otpRecord.phoneNumber,
@@ -199,14 +182,9 @@ exports.resendOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 Error in resendOtp:", error.message);
-    res.status(500).json({
-      message: "Failed to resend OTP",
-      error: error.message,
-      success: false,
-    });
+    res.status(500).json({ message: "Failed to resend OTP", error: error.message, success: false });
   }
 };
-
 exports.verifyOtp = async (req, res) => {
   try {
     let { phoneNumber, otp } = req.body;
