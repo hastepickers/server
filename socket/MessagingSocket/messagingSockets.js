@@ -832,6 +832,14 @@ const messagingSockets = (server) => {
           console.log("MessageSupport created.");
         }
 
+        await notifyUsers(updatedRide, "acceptRide");
+        try {
+          const customerWaMsg = `Good news, ${updatedRide.customer?.firstName}! 🚗\n\nYour Pickars Rider, ${rider.firstName}, has accepted your ride and is on the way to the pickup.\n\n🛵 Vehicle: ${rider.vehicleName} (${rider.plateNumber})`;
+          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
+        } catch (waErr) {
+          console.error("WhatsApp failed for Customer:", waErr.message);
+        }
+
         // Emit updated ride to all clients in room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
@@ -842,14 +850,6 @@ const messagingSockets = (server) => {
           endRide: false,
           reportRide: false,
         });
-
-        await notifyUsers(updatedRide, "acceptRide");
-        try {
-          const customerWaMsg = `Good news, ${updatedRide.customer?.firstName}! 🚗\n\nYour Pickars Rider, ${rider.firstName}, has accepted your ride and is on the way to the pickup.\n\n🛵 Vehicle: ${rider.vehicleName} (${rider.plateNumber})`;
-          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
-        } catch (waErr) {
-          console.error("WhatsApp failed for Customer:", waErr.message);
-        }
 
         console.log("acceptRide event completed.");
       } catch (err) {

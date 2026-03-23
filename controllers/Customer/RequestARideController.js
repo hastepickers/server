@@ -146,17 +146,45 @@ exports.calculateTotalDistance = async (req, res) => {
   }
 };
 // Create a new Request a Ride
+// Create a new Request a Ride
 exports.createRide = async (req, res) => {
+  console.log("--------------------------------------------------");
+  console.log("🚀 [createRide] START: Processing new ride request...");
+
   try {
     const customerId = req.user.id;
+    console.log(`🆔 [createRide] Requesting User ID: ${customerId}`);
 
     const customer = await User.findById(customerId).select(
-      "firstName lastName phoneNumber imageUrl email"
+      "firstName lastName phoneNumber imageUrl email countryCode"
     );
+
     if (!customer) {
+      console.warn("❌ [createRide] Customer record not found in database.");
       return res.status(404).json({ message: "Customer not found" });
     }
 
+    console.log(
+      `👤 [createRide] Customer: ${customer.firstName} ${customer.lastName}`
+    );
+
+    const { deliveryDropoff, pickup, arrivalTime, typeOfVehicleId } = req.body;
+    console.log(`📍 [createRide] Pickup: ${pickup?.pickupAddress || "N/A"}`);
+    console.log(
+      `📦 [createRide] Dropoffs count: ${deliveryDropoff?.length || 0}`
+    );
+
+    // 1. Vehicle Validation
+    const typeOfVehicle = await TypeOfVehicle.findById(typeOfVehicleId);
+    if (!typeOfVehicle) {
+      console.error(
+        `❌ [createRide] Vehicle type ID ${typeOfVehicleId} not found.`
+      );
+      return res.status(404).json({ message: "Type of vehicle not found" });
+    }
+    console.log(`🚲 [createRide] Vehicle Selected: ${typeOfVehicle.name}`);
+
+    // 2. Phone Formatting for Database (Ensuring consistency)
     const formatPhoneForSMS = (countryCode, phoneNumber) => {
       const code = countryCode.replace("+", "");
       const phone = phoneNumber.startsWith("0")
@@ -165,34 +193,15 @@ exports.createRide = async (req, res) => {
       return `${code}${phone}`;
     };
 
-    // // --- Phone Number Formatting Logic ---
-    // let formattedPhoneNumber = customer.phoneNumber
-    //   ? customer.phoneNumber.toString().trim()
-    //   : "";
-
-    // if (formattedPhoneNumber) {
-    //   // 1. Remove '+', '234', or any non-numeric characters at the start
-    //   // This handles +234..., 234..., and accidental spaces
-    //   formattedPhoneNumber = formattedPhoneNumber.replace(
-    //     /^(\+234|234|0+)/,
-    //     ""
-    //   );
-
-    //   // 2. Prepend a single '0' to the remaining digits
-    //   formattedPhoneNumber = `0${formattedPhoneNumber}`;
-    // }
-    // // --------------------------------------
-
-    const { deliveryDropoff, pickup, arrivalTime, typeOfVehicleId } = req.body;
-
-    const typeOfVehicle = await TypeOfVehicle.findById(typeOfVehicleId);
-    if (!typeOfVehicle) {
-      return res.status(404).json({ message: "Type of vehicle not found" });
-    }
     const formattedPhone = formatPhoneForSMS(
       customer?.countryCode || "234",
       customer?.phoneNumber
     );
+    console.log(
+      `📱 [createRide] Formatted phone for storage: ${formattedPhone}`
+    );
+
+    // 3. Create Ride Object
     const newRide = new RequestARide({
       deliveryDropoff,
       pickup,
@@ -219,31 +228,48 @@ exports.createRide = async (req, res) => {
       trackingId: generateUUID(),
     });
 
-    console.warn(formattedPhone, "formattedPhoneNumber");
+    // 4. Save to Database
     await newRide.save();
-    try {
-      const pickupName = pickup?.address || "your location";
-      const waMsg = `Hi ${
-        customer.firstName
-      }! Your Pickars request has been received.\n\n📍 Pickup: ${pickupName}\n🆔 Tracking ID: #${newRide.trackingId.slice(
+    console.log(
+      `✅ [createRide] Ride saved. Tracking ID: #${newRide.trackingId.slice(
         -6
-      )}\n\nWe are matching you with a dispatch rider now.`;
+      )}`
+    );
 
-      // We pass the raw customer.phoneNumber because our utility handles the +234 formatting
-      await sendWhatsApp(customer.phoneNumber, waMsg);
-    } catch (waErr) {
-      console.error(
-        "WhatsApp notification failed for createRide:",
-        waErr.message
-      );
-    }
+    // 5. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking IIFE)
+    (async () => {
+      try {
+        const pickupName = pickup?.pickupAddress || "your location";
+        const waMsg = `Hi ${
+          customer.firstName
+        }! 🛵 Your Pickars request has been received.\n\n📍 Pickup: ${pickupName}\n🆔 Tracking ID: #${newRide.trackingId.slice(
+          -6
+        )}\n\nWe are matching you with a dispatch rider now.`;
 
-    res
-      .status(201)
-      .json({ message: "Ride request created successfully", newRide });
+        console.log(
+          `📡 [Background-WA] Notifying customer: ${customer.phoneNumber}`
+        );
+        // We use the raw number here as our utility handles the cleaning
+        await sendWhatsApp(customer.phoneNumber, waMsg);
+        console.log(`✅ [Background-WA] Notification sent successfully.`);
+      } catch (waErr) {
+        console.error(`⚠️ [Background-WA] WhatsApp failed: ${waErr.message}`);
+      }
+    })();
+
+    console.log("✨ [createRide] COMPLETED SUCCESSFULLY");
+    console.log("--------------------------------------------------");
+
+    res.status(201).json({
+      message: "Ride request created successfully",
+      newRide,
+    });
   } catch (error) {
-    console.error("Error creating ride request:", error);
-    res.status(500).json({ message: "Error creating ride request", error });
+    console.error("🔥 [createRide] CRITICAL ERROR:", error);
+    res.status(500).json({
+      message: "Error creating ride request",
+      error: error.message,
+    });
   }
 };
 
@@ -382,6 +408,27 @@ exports.bookARide = async (req, res) => {
 
     // 7. Save to DB
     await newRideRequest.save();
+
+    // 5. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking IIFE)
+    (async () => {
+      try {
+        const pickupName = pickup?.pickupAddress || "your location";
+        const waMsg = `Hi ${
+          customer.firstName
+        }! Your Pickars request has been received.\n\n Pickup: ${pickupName}\n Tracking ID: #${newRide.trackingId.slice(
+          -6
+        )}\n\nWe are matching you with a dispatch rider now.`;
+
+        console.log(
+          `📡 [Background-WA] Notifying customer: ${customer.phoneNumber}`
+        );
+        // We use the raw number here as our utility handles the cleaning
+        await sendWhatsApp(customer.phoneNumber, waMsg);
+        console.log(`✅ [Background-WA] Notification sent successfully.`);
+      } catch (waErr) {
+        console.error(`⚠️ [Background-WA] WhatsApp failed: ${waErr.message}`);
+      }
+    })();
 
     return res.status(201).json({
       message: "Ride request booked successfully",
