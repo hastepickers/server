@@ -6,6 +6,7 @@ const { generateRiderToken } = require("../../utils/ridertokenUtil");
 const Rider = require("../../models/Rider/RiderSchema");
 const RiderOtp = require("../../models/Rider/RidersOtp");
 const RidersOtp = require("../../models/Rider/RidersOtp");
+const { sendWhatsApp } = require("../../utils/sendWhatsApp");
 
 // Create a new rider and send OTP to the phone number
 exports.createRider = async (req, res) => {
@@ -113,6 +114,12 @@ exports.sendOtp = async (req, res) => {
 
     console.log(`🎫 OTP generated for ${zeroNumber}: ${otp}`);
     console.log("--------------------------------------------------");
+    try {
+      const waMsg = `Your new Pickars code is: ${otp}. Valid for 30 mins.`;
+      await sendWhatsApp(zeroNumber, waMsg);
+    } catch (waErr) {
+      console.error("WhatsApp resend failed:", waErr.message);
+    }
 
     res.status(200).json({
       message: "OTP sent successfully for login",
@@ -178,6 +185,13 @@ exports.resendOtp = async (req, res) => {
     console.log(`🎫 OTP resent for ${zeroNumber}: ${otp}`);
     console.log("--------------------------------------------------");
 
+    try {
+      const waMsg = `Your new Pickars code is: ${otp}. Valid for 30 mins.`;
+      await sendWhatsApp(zeroNumber, waMsg);
+    } catch (waErr) {
+      console.error("WhatsApp resend failed:", waErr.message);
+    }
+    
     res.status(200).json({
       message: "OTP resent successfully",
       phoneNumber: otpRecord.phoneNumber,
