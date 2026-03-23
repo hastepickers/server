@@ -490,24 +490,33 @@ const LOCK_DURATION_HOURS = 5; // Lock account for 5 hours if exceeded attempts
 
 exports.resendOtp = async (req, res) => {
   const { phoneNumber } = req.body;
-  console.log(phoneNumber, "phoneNumber for resend");
+  console.log("--------------------------------------------------");
+  console.log("🔄 [resendOtp] Initiated for:", phoneNumber);
 
   try {
     const user = await User.findOne({ phoneNumber });
 
     if (!user) {
+      console.warn(`❌ [resendOtp] User not found: ${phoneNumber}`);
       return res.status(404).json({ message: "User does not exist" });
     }
 
-    // ✅ Check if user is locked and if lock has expired
+    console.log(
+      `👤 [resendOtp] Found User: ${user.firstName} ${user.lastName} (${user.email})`
+    );
+
+    // ✅ Check if user is locked
     if (user.loginLock && user.loginLockUntil) {
       if (new Date() < user.loginLockUntil) {
+        console.warn(
+          `🔒 [resendOtp] Account is still LOCKED until: ${user.loginLockUntil}`
+        );
         return res.status(423).json({
           message:
             "Account locked due to too many OTP attempts. Try again later.",
         });
       } else {
-        // Unlock user after lock duration expires
+        console.log("🔓 [resendOtp] Lock period expired. Unlocking account...");
         user.loginLock = false;
         user.loginLockUntil = null;
         await user.save();
@@ -519,19 +528,27 @@ exports.resendOtp = async (req, res) => {
     const now = new Date();
 
     if (otpRecord) {
-      // Reset attempts if outside the 3-hour window
+      console.log(
+        `📊 [resendOtp] Existing OTP record found. Current attempts: ${otpRecord.attempts}`
+      );
+
       const timeSinceLastAttempt = now - otpRecord.lastAttemptAt;
       const threeHours = ATTEMPT_WINDOW_HOURS * 60 * 60 * 1000;
 
       if (timeSinceLastAttempt > threeHours) {
-        otpRecord.attempts = 0; // Reset attempts
+        console.log(
+          "🕒 [resendOtp] Outside 3-hour window. Resetting attempts to 0."
+        );
+        otpRecord.attempts = 0;
       }
 
       otpRecord.attempts += 1;
       otpRecord.lastAttemptAt = now;
 
-      // ✅ Lock account if attempts exceed MAX_OTP_ATTEMPTS
       if (otpRecord.attempts > MAX_OTP_ATTEMPTS) {
+        console.error(
+          `🚫 [resendOtp] MAX_ATTEMPTS EXCEEDED (${otpRecord.attempts}). Locking account.`
+        );
         user.loginLock = true;
         user.loginLockUntil = new Date(
           Date.now() + LOCK_DURATION_HOURS * 60 * 60 * 1000
@@ -544,7 +561,7 @@ exports.resendOtp = async (req, res) => {
         });
       }
     } else {
-      // Create new OTP record if doesn't exist
+      console.log("🆕 [resendOtp] No existing OTP record. Creating new one.");
       otpRecord = new Otp({
         phoneNumber,
         attempts: 1,
@@ -552,30 +569,44 @@ exports.resendOtp = async (req, res) => {
       });
     }
 
-    // ✅ Generate OTP and expiration
+    // ✅ Generate OTP
     const otpCode = generateOtp(6);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     otpRecord.otp = otpCode;
     otpRecord.expiresAt = expiresAt;
     await otpRecord.save();
+    console.log(
+      `🎫 [resendOtp] New OTP Generated: ${otpCode} (Expires: ${expiresAt.toLocaleTimeString()})`
+    );
 
-    // ✅ Send OTP via email (or SMS)
+    // ✅ Send Notifications
     const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
     const userEmail = user?.email;
+
+    // 1. Email
+    console.log(`📧 [resendOtp] Sending Email to: ${userEmail}`);
     const emailHtml = generateOTPEmail(otpCode, true, userName);
     await sendEmail(userEmail, "OTP for Verification", emailHtml);
-    try {
-      const waMsg = `Your new Pickars code is: ${otpCode}. Valid for 30 mins.`;
-      await sendWhatsApp(phoneNumber, waMsg);
-    } catch (waErr) {
-      console.error("WhatsApp resend failed:", waErr.message);
-    }
-    console.log(`Resent OTP to ${userEmail} with code: ${otpCode}`);
-    res.status(200).json({ message: "OTP resent successfully" });
+    console.log("✅ [resendOtp] Email sent.");
+
+    // 2. WhatsApp
+    console.log(`📱 [resendOtp] Triggering WhatsApp to: ${phoneNumber}`);
+    // Fire and forget - doesn't block the response
+    sendWhatsApp(
+      phoneNumber,
+      `Your new Pickars code is: ${otpCode}. Valid for 30 mins.`
+    );
+
+    console.log(`✨ [resendOtp] SUCCESS for ${phoneNumber}`);
+    console.log("--------------------------------------------------");
+
+    res.status(200).json({ message: "OTP resent successfully", success: true });
   } catch (error) {
-    console.error("Error resending OTP:", error);
-    res.status(500).json({ message: "Error resending OTP", error });
+    console.error("🔥 [resendOtp] CRITICAL ERROR:", error);
+    res
+      .status(500)
+      .json({ message: "Error resending OTP", error: error.message });
   }
 };
 
