@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const TypeOfVehicle = require("../../models/Admin/TypeOfVehicleSchema");
 const RideSocket = require("../../models/Rider/RideSocket");
 const { v4: uuidv4 } = require("uuid");
+const { sendWhatsApp } = require("../../utils/sendWhatsApp");
 
 // Helper to generate pickup or delivery code
 function generateCustomCode(prefix = "USER") {
@@ -220,6 +221,23 @@ exports.createRide = async (req, res) => {
 
     console.warn(formattedPhone, "formattedPhoneNumber");
     await newRide.save();
+    try {
+      const pickupName = pickup?.address || "your location";
+      const waMsg = `Hi ${
+        customer.firstName
+      }! Your Pickars request has been received.\n\n📍 Pickup: ${pickupName}\n🆔 Tracking ID: #${newRide.trackingId.slice(
+        -6
+      )}\n\nWe are matching you with a dispatch rider now.`;
+
+      // We pass the raw customer.phoneNumber because our utility handles the +234 formatting
+      await sendWhatsApp(customer.phoneNumber, waMsg);
+    } catch (waErr) {
+      console.error(
+        "WhatsApp notification failed for createRide:",
+        waErr.message
+      );
+    }
+
     res
       .status(201)
       .json({ message: "Ride request created successfully", newRide });

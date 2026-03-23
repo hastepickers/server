@@ -17,6 +17,7 @@ const notifyUsers = require("../../emails/emailTemplates/notifyUsers");
 const notifyDriver = require("../../emails/emailTemplates/notifyDriver");
 const DriverDeviceToken = require("../../models/DriverDeviceToken");
 const { capitalize } = require("../../utils/capitalize");
+const { sendWhatsApp } = require("../../utils/sendWhatsApp");
 
 async function removeReceivingItemsForRide(rideId) {
   try {
@@ -576,6 +577,13 @@ const messagingSockets = (server) => {
           console.log("Customer recent delivery location updated.");
         }
 
+        try {
+          const riderWaMsg = `Hello Pickars Rider ${rider.firstName}! 🛵\n\nYou have accepted a new dispatch request.\n\n📍 Pickup: ${updatedRide.pickup?.pickupAddress}\n👤 Customer: ${updatedRide.customer?.firstName}\n\nPlease head to the pickup location now. Safe riding!`;
+          await sendWhatsApp(rider.phoneNumber, riderWaMsg);
+        } catch (waErr) {
+          console.error("WhatsApp failed for Rider:", waErr.message);
+        }
+
         // Update receivingItems for each delivery in deliveryDropoff
         for (const delivery of updatedRide.deliveryDropoff || []) {
           // Only process deliveries that have a receiverUserId and the ride is not ended
@@ -836,6 +844,12 @@ const messagingSockets = (server) => {
         });
 
         await notifyUsers(updatedRide, "acceptRide");
+        try {
+          const customerWaMsg = `Good news, ${updatedRide.customer?.firstName}! 🚗\n\nYour Pickars Rider, ${rider.firstName}, has accepted your ride and is on the way to the pickup.\n\n🛵 Vehicle: ${rider.vehicleName} (${rider.plateNumber})`;
+          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
+        } catch (waErr) {
+          console.error("WhatsApp failed for Customer:", waErr.message);
+        }
 
         console.log("acceptRide event completed.");
       } catch (err) {
@@ -879,6 +893,20 @@ const messagingSockets = (server) => {
           console.error(`No ride found with ID: ${rideId}`);
           return;
         }
+        // Notify Users (Customer + Receivers)
+        // ✅ START RIDE - Fail-Safe WhatsApp
+        try {
+          const customerMsg = `Your Pickars Rider (${rider.firstName}) has started the trip! 🛵\nYour items are now in transit.`;
+
+          // We don't "await" this if we want it to be ultra-fast,
+          // but "await" inside a try/catch is safer for logging.
+          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerMsg);
+          console.log("✅ WhatsApp sent to customer");
+        } catch (waError) {
+          // If WhatsApp fails, we just log it and move on.
+          // The user still gets the socket update!
+          console.error("⚠️ WhatsApp Failed but moving on:", waError.message);
+        }
 
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
@@ -892,7 +920,6 @@ const messagingSockets = (server) => {
 
         console.log("✅ Start Ride Event Processed");
 
-        // Notify Users (Customer + Receivers)
         await notifyUsers(updatedRide, "startRide");
       } catch (error) {
         console.error(
@@ -942,6 +969,19 @@ const messagingSockets = (server) => {
         }
 
         await removeReceivingItemsForRide(rideObject);
+        try {
+          await sendWhatsApp(
+            updatedRide.customer?.phoneNumber,
+            `🏁 Ride Completed! Delivery #${updatedRide.trackingId.slice(
+              -6
+            )} was successful. Thank you for choosing Pickars!`
+          ).catch((err) =>
+            console.error("WhatsApp End-Ride Error (Customer):", err.message)
+          );
+          console.log("✅ WhatsApp sent to customer");
+        } catch (waError) {
+          console.error("⚠️ WhatsApp Failed but moving on:", waError.message);
+        }
 
         io.to(rideObject.toString()).emit("rideBooked", {
           ride: updatedRide,
@@ -1031,7 +1071,17 @@ const messagingSockets = (server) => {
         // Remove receiving items related to this ride
         await removeReceivingItemsForRide(rideId);
 
-        // Emit cancellation update to all clients in the ride room
+        try {
+          await sendWhatsApp(
+            updatedRide.customer?.phoneNumber,
+            cancelMsg
+          ).catch((err) =>
+            console.error("WhatsApp Cancel Error (Customer):", err.message)
+          );
+          console.log("✅ WhatsApp sent to customer");
+        } catch (waError) {
+          console.error("⚠️ WhatsApp Failed but moving on:", waError.message);
+        }
         io.to(rideId.toString()).emit("rideBooked", {
           ride: updatedRide,
           pairing: false,
