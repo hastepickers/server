@@ -505,32 +505,27 @@ const messagingSockets = (server) => {
       console.log(`Message from ${senderId} to group ${groupId}: ${message}`);
       io.to(groupId).emit("receiveMessage", messageData);
     });
-
     socket.on("acceptRide", async (payload) => {
-      if (!payload) {
-        return console.error("No data received for acceptRide event.");
-      }
+      console.log(
+        "[AcceptRide] Event triggered. Payload:",
+        JSON.stringify(payload)
+      );
 
+      if (!payload) return console.error("[AcceptRide] No data received.");
       const { rideId, driverId } = payload;
-
-      if (!rideId || !driverId || !mongoose.Types.ObjectId.isValid(driverId)) {
-        return console.error("Invalid data for acceptRide:", payload);
-      }
 
       try {
         const rider = await Rider.findById(driverId);
-        if (!rider) {
-          return console.error(`No rider found with ID: ${driverId}`);
-        }
+        if (!rider)
+          return console.error(`[AcceptRide] Rider not found: ${driverId}`);
 
         const updatedRideSocket = await RideSocket.findOneAndUpdate(
           { rideId },
           { status: "accepted" },
           { new: true }
         );
-        if (!updatedRideSocket) {
-          return console.error(`No RideSocket found for rideId: ${rideId}`);
-        }
+        if (!updatedRideSocket)
+          return console.error(`[AcceptRide] RideSocket not found: ${rideId}`);
 
         const updatedRide = await RequestARide.findByIdAndUpdate(
           rideId,
@@ -551,309 +546,174 @@ const messagingSockets = (server) => {
             },
           },
           { new: true }
-        ).populate("customer.customerId"); // Populate customer to ensure all details are present
+        ).populate("customer.customerId");
 
-        if (!updatedRide) {
-          return console.error(`No ride found with ID: ${rideId}`);
-        }
+        if (!updatedRide)
+          return console.error(`[AcceptRide] Ride not found: ${rideId}`);
 
-        // Update recent delivery location for customer
-        const customerUser = await User.findById(
-          updatedRide.customer?.customerId
-        );
-        const latestDrop = updatedRide.deliveryDropoff?.[0];
-
-        if (
-          customerUser &&
-          latestDrop &&
-          customerUser.addRecentDeliveryLocation
-        ) {
-          customerUser.addRecentDeliveryLocation({
-            address: latestDrop.deliveryAddress,
-            latitude: latestDrop.deliveryLatitude,
-            longitude: latestDrop.deliveryLongitude,
-          });
-          await customerUser.save();
-          console.log("Customer recent delivery location updated.");
-        }
-
+        // --- ISOLATED: CUSTOMER LOCATION UPDATE ---
         try {
-          const riderWaMsg = `Hello Pickars Rider ${rider.firstName}! 🛵\n\nYou have accepted a new dispatch request.\n\n📍 Pickup: ${updatedRide.pickup?.pickupAddress}\n👤 Customer: ${updatedRide.customer?.firstName}\n\nPlease head to the pickup location now. Safe riding!`;
-          await sendWhatsApp(rider.phoneNumber, riderWaMsg);
-        } catch (waErr) {
-          console.error("WhatsApp failed for Rider:", waErr.message);
+          const customerUser = await User.findById(
+            updatedRide.customer?.customerId
+          );
+          const latestDrop = updatedRide.deliveryDropoff?.[0];
+          if (
+            customerUser &&
+            latestDrop &&
+            customerUser.addRecentDeliveryLocation
+          ) {
+            customerUser.addRecentDeliveryLocation({
+              address: latestDrop.deliveryAddress,
+              latitude: latestDrop.deliveryLatitude,
+              longitude: latestDrop.deliveryLongitude,
+            });
+            await customerUser.save();
+            console.log("[AcceptRide] Customer recent location updated.");
+          }
+        } catch (locErr) {
+          console.error(
+            "[AcceptRide] Non-fatal error updating customer location:",
+            locErr.message
+          );
         }
 
-        // Update receivingItems for each delivery in deliveryDropoff
+        // --- ISOLATED: RIDER WHATSAPP ---
+        try {
+          const riderWaMsg = `Hello Pickars Rider ${rider.firstName}! 🛵...`;
+          await sendWhatsApp(rider.phoneNumber, riderWaMsg);
+          console.log("[AcceptRide] WhatsApp sent to Rider.");
+        } catch (waErr) {
+          console.error(
+            "[AcceptRide] WhatsApp failed for Rider:",
+            waErr.message
+          );
+        }
+
+        // --- ISOLATED: RECEIVER LOOP ---
+        // If one receiver update fails, the 'for' loop continues to the next one
         for (const delivery of updatedRide.deliveryDropoff || []) {
-          // Only process deliveries that have a receiverUserId and the ride is not ended
-          if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded) {
-            if (updatedRide.endRide?.isEnded) {
-              console.log(
-                `Skipping delivery for ride ${rideId} as it has ended.`
-              );
-            } else {
+          try {
+            if (!delivery?.receiverUserId || updatedRide.endRide?.isEnded)
+              continue;
+
+            const receiverUser = await User.findById(delivery.receiverUserId);
+            if (!receiverUser || !receiverUser.addReceivingItem) {
               console.warn(
-                `Skipping delivery due to missing receiverUserId: ${JSON.stringify(
-                  delivery
-                )}`
+                `[AcceptRide] Receiver ${delivery.receiverUserId} skipped (not found or method missing).`
               );
+              continue;
             }
-            continue;
-          }
 
-          const receiverUser = await User.findById(delivery.receiverUserId);
-
-          if (!receiverUser) {
-            console.warn(
-              `No receiver user found with ID: ${delivery.receiverUserId}. Skipping delivery update for this item.`
-            );
-            continue;
-          }
-
-          const customer = updatedRide.customer || {};
-          const pickup = updatedRide.pickup || {};
-
-          // Prepare receivingItemData ensuring all required fields are present and valid
-          const receivingItemData = {
-            rideId: updatedRide._id,
-            deliveryCode:
-              delivery.deliveryCode ||
-              `GEN-${Date.now()}-${Math.random()
-                .toString(36)
-                .substr(2, 5)
-                .toUpperCase()}`, // Ensure a delivery code is always present
-            deliveryLocation: {
-              address: delivery.deliveryAddress || "",
-              latitude: delivery.deliveryLatitude,
-              longitude: delivery.deliveryLongitude,
-            },
-            pickup: {
-              senderName:
-                `${customer.firstName || ""} ${
+            const customer = updatedRide.customer || {};
+            const receivingItemData = {
+              rideId: updatedRide._id,
+              deliveryCode: delivery.deliveryCode || `GEN-${Date.now()}`,
+              deliveryLocation: {
+                address: delivery.deliveryAddress || "",
+                latitude: delivery.deliveryLatitude,
+                longitude: delivery.deliveryLongitude,
+              },
+              pickup: {
+                senderName: `${customer.firstName || ""} ${
                   customer.lastName || ""
-                }`.trim() || "N/A",
-              senderPhoneNumber: customer.phoneNumber || "N/A",
-              pickupAddress: pickup.pickupAddress || "N/A",
-            },
-            rideStatus: { isEnded: updatedRide.endRide?.isEnded || false },
-            createdAt: updatedRide.createdAt
-              ? new Date(updatedRide.createdAt)
-              : new Date(), // Ensure createdAt is a Date object
-          };
+                }`.trim(),
+                senderPhoneNumber: customer.phoneNumber,
+                pickupAddress: updatedRide.pickup?.pickupAddress,
+              },
+              rideStatus: { isEnded: false },
+              createdAt: new Date(),
+            };
 
-          // Perform pre-validation check
-          const isValid =
-            receivingItemData.rideId &&
-            receivingItemData.deliveryCode &&
-            receivingItemData.createdAt instanceof Date &&
-            receivingItemData.deliveryLocation.address &&
-            typeof receivingItemData.deliveryLocation.latitude === "number" &&
-            !isNaN(receivingItemData.deliveryLocation.latitude) &&
-            typeof receivingItemData.deliveryLocation.longitude === "number" &&
-            !isNaN(receivingItemData.deliveryLocation.longitude) &&
-            receivingItemData.pickup.senderName &&
-            receivingItemData.pickup.senderPhoneNumber &&
-            receivingItemData.pickup.pickupAddress;
-
-          if (!isValid) {
-            console.error(
-              "Invalid receivingItemData for user:",
-              receiverUser._id,
-              "Data:",
-              receivingItemData
-            );
-            if (!receivingItemData.rideId) console.error("   - Missing rideId");
-            if (!receivingItemData.deliveryCode)
-              console.error("   - Missing deliveryCode");
-            if (!(receivingItemData.createdAt instanceof Date))
-              console.error("   - Missing or invalid createdAt");
-            if (!receivingItemData.deliveryLocation.address)
-              console.error("   - Missing deliveryLocation.address");
-            if (
-              !(
-                typeof receivingItemData.deliveryLocation.latitude ===
-                  "number" &&
-                !isNaN(receivingItemData.deliveryLocation.latitude)
-              )
-            )
-              console.error(
-                "   - Missing or invalid deliveryLocation.latitude"
-              );
-            if (
-              !(
-                typeof receivingItemData.deliveryLocation.longitude ===
-                  "number" &&
-                !isNaN(receivingItemData.deliveryLocation.longitude)
-              )
-            )
-              console.error(
-                "   - Missing or invalid deliveryLocation.longitude"
-              );
-            if (!receivingItemData.pickup.senderName)
-              console.error("   - Missing pickup.senderName");
-            if (!receivingItemData.pickup.senderPhoneNumber)
-              console.error("   - Missing pickup.senderPhoneNumber");
-            if (!receivingItemData.pickup.pickupAddress)
-              console.error("   - Missing pickup.pickupAddress");
-            continue; // Skip this invalid entry
-          }
-
-          if (receiverUser.addReceivingItem) {
             receiverUser.addReceivingItem(receivingItemData);
             await receiverUser.save();
-            console.log(
-              `Receiver (${receiverUser._id}) receivingItems updated for delivery code: ${receivingItemData.deliveryCode}.`
-            );
+            console.log(`[AcceptRide] Receiver ${receiverUser._id} updated.`);
 
-            const customerUserId = receiverUser?._id;
-            if (customerUserId) {
-              const actualReceiverUser = await User.findById(customerUserId);
-
-              if (!actualReceiverUser) {
-                console.warn(
-                  `Actual receiver user with ID ${customerUserId} not found. Cannot send notifications.`
-                );
-                return;
-              }
-
+            // --- NESTED ISOLATION: PUSH/EMAIL NOTIFICATIONS ---
+            try {
               const tokens = await DeviceToken.find({
-                userId: actualReceiverUser._id.toString(),
+                userId: receiverUser._id.toString(),
               });
-
               if (tokens.length > 0) {
-                const deviceTokens = tokens.map((t) => t.deviceToken);
-
-                const { title, message, payload } = notificationTexts(
-                  updatedRide
-                ).incomingDelivery(
-                  `${customer.firstName || ""} ${
-                    customer.lastName || ""
-                  }`.trim()
-                );
-
-                const receiverEmail = actualReceiverUser.email;
-
-                // --- THIS IS THE CORRECTED PART ---
-                // Generate the HTML content ONCE for this receiver
                 const htmlEmailContent = await generateIncomingDispatch(
                   updatedRide,
-                  actualReceiverUser._id.toString()
+                  receiverUser._id.toString()
+                );
+                const {
+                  title,
+                  message,
+                  payload: pushPayload,
+                } = notificationTexts(updatedRide).incomingDelivery(
+                  receivingItemData.pickup.senderName
                 );
 
-                if (!htmlEmailContent) {
-                  console.warn(
-                    `Failed to generate HTML email content for user ${actualReceiverUser._id}. Email will not be sent.`
-                  );
-                }
-
-                for (const token of deviceTokens) {
-                  if (actualReceiverUser.pushNotifications) {
+                for (const token of tokens) {
+                  if (receiverUser.pushNotifications) {
                     await sendIOSPush(
-                      token,
+                      token.deviceToken,
                       title,
                       message,
-                      payload,
+                      pushPayload,
                       process.env.BUNDLE_ID
-                    );
-                    console.log(
-                      `Push notification sent to device token: ${token} for user ${actualReceiverUser._id}.`
-                    );
-                  } else {
-                    console.log(
-                      `Push notifications disabled for user ${actualReceiverUser._id}. Skipping.`
-                    );
-                  }
-
-                  // Send Email Notification
-                  // Only proceed if HTML content was generated, receiverEmail exists,
-                  // and the user has email notifications enabled.
-
-                  if (
-                    htmlEmailContent &&
-                    receiverEmail &&
-                    actualReceiverUser.emailNotifications
-                  ) {
-                    const emailSubject = "Your Pickars Delivery is On Its Way!";
-                    const emailTextDescription = `Hi ${
-                      actualReceiverUser.firstName || "there"
-                    },\n\nYour delivery from ${customer.firstName || ""} ${
-                      customer.lastName || ""
-                    } is on its way to ${
-                      receivingItemData.deliveryLocation.address
-                    }.\n\nYour pickup code is: ${
-                      receivingItemData.deliveryCode || "N/A"
-                    }.\n\nTrack your delivery on the Pickars app.\n\nThank you for choosing Pickars!`;
-
-                    await sendEmail(
-                      receiverEmail,
-                      emailSubject,
-                      emailTextDescription,
-                      htmlEmailContent // Pass the already generated HTML content
-                    );
-                    console.log(
-                      `Email notification sent to ${receiverEmail} for user ${actualReceiverUser._id}.`
-                    );
-                  } else {
-                    console.warn(
-                      `Email not sent for user ${actualReceiverUser._id}: HTML content not generated, receiver email missing, or email notifications are disabled for this user.`
                     );
                   }
                 }
-
-                console.log(
-                  `Notifications processing complete for user ${actualReceiverUser._id}`
-                );
-              } else {
-                console.warn(
-                  `No device tokens found for user ${customerUserId}. Push notification not sent.`
-                );
+                if (
+                  htmlEmailContent &&
+                  receiverUser.email &&
+                  receiverUser.emailNotifications
+                ) {
+                  await sendEmail(
+                    receiverUser.email,
+                    "Delivery Update",
+                    "Your item is coming!",
+                    htmlEmailContent
+                  );
+                }
               }
-            } else {
-              console.warn(
-                "No customer userId found for notification purposes."
+            } catch (notifErr) {
+              console.error(
+                `[AcceptRide] Notification failed for receiver ${receiverUser._id}:`,
+                notifErr.message
               );
             }
-          } else {
-            console.warn(
-              `User method 'addReceivingItem' not found for user ${receiverUser._id}. Please define it on the User schema.`
+          } catch (deliveryErr) {
+            console.error(
+              `[AcceptRide] Failed to process a specific delivery drop:`,
+              deliveryErr.message
             );
+            // Loop continues to next delivery because of this catch
           }
         }
 
-        // Create MessageSupport if it doesn't exist
-        const existingMessageSupport = await MessageSupport.findOne({ rideId });
-        if (!existingMessageSupport) {
-          await new MessageSupport({
-            rideId,
-            userId: rider._id,
-            messages: [],
-          }).save();
-          console.log("MessageSupport created.");
-        }
-
-        await notifyUsers(updatedRide, "acceptRide");
+        // --- FINAL STEPS ---
         try {
-          const customerWaMsg = `Good news, ${updatedRide.customer?.firstName}! 🚗\n\nYour Pickars Rider, ${rider.firstName}, has accepted your ride and is on the way to the pickup.\n\n🛵 Vehicle: ${rider.vehicleName} (${rider.plateNumber})`;
+          const existingMsg = await MessageSupport.findOne({ rideId });
+          if (!existingMsg)
+            await new MessageSupport({
+              rideId,
+              userId: rider._id,
+              messages: [],
+            }).save();
+
+          await notifyUsers(updatedRide, "acceptRide");
+
+          const customerWaMsg = `Good news ${updatedRide.customer?.firstName}! Rider is on the way.`;
           await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
-        } catch (waErr) {
-          console.error("WhatsApp failed for Customer:", waErr.message);
+        } catch (finalErr) {
+          console.error(
+            "[AcceptRide] Error in post-processing steps:",
+            finalErr.message
+          );
         }
 
-        // Emit updated ride to all clients in room
         io.to(rideId).emit("rideBooked", {
           ride: updatedRide,
           rider,
-          pairing: false,
           acceptRide: true,
-          startRide: false,
-          endRide: false,
-          reportRide: false,
         });
-
-        console.log("acceptRide event completed.");
+        console.log("[AcceptRide] Event completed successfully.");
       } catch (err) {
-        console.error("Error in acceptRide handler:", err.message);
+        console.error("[AcceptRide] Fatal error in main handler:", err.message);
       }
     });
 
