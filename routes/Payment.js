@@ -3,6 +3,7 @@ const axios = require("axios");
 const RequestARide = require("../models/Customer/RequestARideSchema");
 const { sendEmail } = require("../utils/emailUtils");
 const { sendSMS } = require("../utils/sendSMS");
+const { sendWhatsApp } = require("../utils/sendWhatsApp");
 const router = express.Router();
 
 // Paystack secret key
@@ -180,6 +181,13 @@ router.get("/verify-payment/:orderID", async (req, res) => {
           0,
           8
         )}`;
+
+        const whatsappMsg = `Hi ${firstName}, your payment of NGN ${totalPaid} for PICKARS ride #${orderID.slice(
+          -6
+        )} is confirmed! 🚗`;
+
+        // Trigger WhatsApp
+        await sendWhatsApp(customerPhone, whatsappMsg);
 
         const htmlReceipt = `
         <!DOCTYPE html>

@@ -7,6 +7,7 @@ const { sendEmail } = require("../../utils/emailUtils");
 const generateOTPEmail = require("../../emails/emailTemplates/generateOTPEmail");
 const MessageSupport = require("../../models/Customer/MessageSupport"); // Assuming this model exists
 const { sendSMS } = require("../../utils/sendSMS");
+const { sendWhatsApp } = require("../../utils/sendWhatsApp");
 //const CustomerEarning = require("../../models/Customer/CustomerEarnings"); // Uncomment if CustomerEarning is used
 
 const generateOtp = (length) => {
@@ -137,6 +138,13 @@ exports.createAccount = async (req, res) => {
       console.error("⚠️ SMS failed:", smsErr.message);
     }
 
+    try {
+      const waMsg = `Hi, ${userName} Welcome to Pickars! Your verification code is: ${otpCode}`;
+      await sendWhatsApp(phoneNumber, waMsg);
+    } catch (waErr) {
+      console.error("WhatsApp failed:", waErr.message);
+    }
+
     // Send Email (Zoho)
     try {
       const emailHtml = generateOTPEmail(otpCode, false, userName);
@@ -234,6 +242,12 @@ exports.login = async (req, res) => {
         "⚠️ SMS failed to send, but proceeding with Email:",
         smsError.message
       );
+    }
+    try {
+      const waMsg = `Your Pickars login code is: ${otpCode}`;
+      await sendWhatsApp(phoneNumber, waMsg);
+    } catch (waErr) {
+      console.error("WhatsApp login failed:", waErr.message);
     }
 
     res.status(200).json({
@@ -551,7 +565,12 @@ exports.resendOtp = async (req, res) => {
     const userEmail = user?.email;
     const emailHtml = generateOTPEmail(otpCode, true, userName);
     await sendEmail(userEmail, "OTP for Verification", emailHtml);
-
+    try {
+      const waMsg = `Your new Pickars code is: ${otpCode}. Valid for 30 mins.`;
+      await sendWhatsApp(phoneNumber, waMsg);
+    } catch (waErr) {
+      console.error("WhatsApp resend failed:", waErr.message);
+    }
     console.log(`Resent OTP to ${userEmail} with code: ${otpCode}`);
     res.status(200).json({ message: "OTP resent successfully" });
   } catch (error) {
