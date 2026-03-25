@@ -15,9 +15,9 @@ const updateDeviceInDB = async (req, res, Model, role) => {
 
   try {
     const updatedDevice = await Model.findOneAndUpdate(
-      { userId }, // Find by userId
-      { deviceToken, platform }, // Update these fields
-      { new: true, upsert: true, runValidators: true } // Create if doesn't exist
+      { userId },
+      { deviceToken, platform },
+      { new: true, upsert: true, runValidators: true } 
     );
 
     console.log(`✅ Database Updated for ${role} [${userId}]:`, updatedDevice);
