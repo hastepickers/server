@@ -1,48 +1,45 @@
-// routes/push.js
 import express from "express";
+import DeviceToken from "../models/DeviceToken.js";
+import DriverDeviceToken from "../models/DriverDeviceToken.js";
 
 const router = express.Router();
 
-// In-memory store (replace with DB or Redis in production)
-const deviceTokens = new Set();
+const updateDeviceInDB = async (req, res, Model, role) => {
+  const { userId, deviceToken, platform } = req.body;
 
-// Register device token
+  if (!userId || !deviceToken || !platform) {
+    return res.status(400).json({
+      message: "userId, deviceToken, and platform are required.",
+    });
+  }
+
+  try {
+    const updatedDevice = await Model.findOneAndUpdate(
+      { userId }, // Find by userId
+      { deviceToken, platform }, // Update these fields
+      { new: true, upsert: true, runValidators: true } // Create if doesn't exist
+    );
+
+    console.log(`✅ Database Updated for ${role} [${userId}]:`, updatedDevice);
+
+    return res.status(200).json({
+      message: `${role} device updated successfully.`,
+      data: updatedDevice,
+    });
+  } catch (error) {
+    console.error(`❌ Error updating ${role} token:`, error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// Route for standard Users
 router.post("/register-device-token", (req, res) => {
-  const { deviceToken } = req.body;
-  console.log("✅ device token:", deviceToken);
-
-  if (!deviceToken) {
-    return res.status(400).json({ message: "Device token is required." });
-  }
-
-  if (!deviceTokens.has(deviceToken)) {
-    deviceTokens.add(deviceToken);
-    console.log("✅ Registered device token:", deviceToken);
-  } else {
-    console.log("ℹ️ Device token already registered:", deviceToken);
-  }
-
-  return res.status(200).json({ message: "Device token registered." });
+  updateDeviceInDB(req, res, DeviceToken, "User");
 });
 
+// Route for Drivers
 router.post("/driver-register-device-token", (req, res) => {
-  const { deviceToken } = req.body;
-  console.log("✅ device token:", deviceToken);
-
-  if (!deviceToken) {
-    return res.status(400).json({ message: "Device token is required." });
-  }
-
-  if (!deviceTokens.has(deviceToken)) {
-    deviceTokens.add(deviceToken);
-    console.log("✅ Registered device token:", deviceToken);
-  } else {
-    console.log("ℹ️ Device token already registered:", deviceToken);
-  }
-
-  return res.status(200).json({ message: "Device token registered." });
+  updateDeviceInDB(req, res, DriverDeviceToken, "Driver");
 });
-
-
 
 export default router;
