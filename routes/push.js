@@ -32,7 +32,6 @@ const updateDeviceInDB = async (req, res, Model, role) => {
   }
 };
 
-// Route for standard Users
 router.post("/register-device-token", (req, res) => {
   updateDeviceInDB(req, res, DeviceToken, "User");
 });

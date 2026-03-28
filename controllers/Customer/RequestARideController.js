@@ -110,7 +110,7 @@ exports.calculateTotalDistance = async (req, res) => {
         discountPercent: 15,
         price: 2000,
         off: 525,
-        description: "Standard delivery with 15% discount.",
+        description: "Standard delivery for your everyday items.",
       },
       {
         id: "premium",
@@ -120,17 +120,17 @@ exports.calculateTotalDistance = async (req, res) => {
         discountPercent: 5,
         price: 5000,
         off: 400,
-        description: "Urgent delivery with 5% discount.",
+        description: "Skip the queue. Direct-to-door urgent delivery.",
       },
       {
         id: "insured",
         title: "Insured",
         type: "bike",
-        priceBeforeDiscount: 12000,
+        priceBeforeDiscount: 24000,
         discountPercent: 0,
         price: 12000,
         off: 0,
-        description: "Delivery with full insurance coverage at ₦12,000.",
+        description: "Full coverage for high-value items",
       },
     ];
 
@@ -236,22 +236,61 @@ exports.createRide = async (req, res) => {
       )}`
     );
 
-    // 5. 🛡️ FAIL-SAFE WHATSAPP (Non-blocking IIFE)
+    // 5. 🛡️ FAIL-SAFE WHATSAPP (Conditional Data Rendering)
     (async () => {
       try {
-        const pickupName = pickup?.pickupAddress || "your location";
-        const waMsg = `Hi ${
-          customer.firstName
-        }! 🛵 Your Pickars request has been received.\n\n📍 Pickup: ${pickupName}\n🆔 Tracking ID: #${newRide.trackingId.slice(
-          -6
-        )}\n\nWe are matching you with a dispatch rider now.`;
+        const ADMIN_NUMBER = "2349164860591";
+        const shortId = newRide.trackingId?.slice(-6).toUpperCase() || "N/A";
 
-        console.log(
-          `📡 [Background-WA] Notifying customer: ${customer.phoneNumber}`
-        );
-        // We use the raw number here as our utility handles the cleaning
-        await sendWhatsApp(customer.phoneNumber, waMsg);
-        console.log(`✅ [Background-WA] Notification sent successfully.`);
+        // --- DATA PREPARATION (Only include what exists) ---
+        const pickupName = pickup?.pickupAddress;
+
+        // Filter and Format Dropoffs
+        const deliveryList = deliveryDropoff
+          ?.filter((d) => d.address)
+          .map((d, i) => `STOP ${i + 1}: ${d.address}`)
+          .join("\n");
+
+        // Filter and Format Items
+        const items = deliveryDropoff
+          ?.map((d) => d.itemDescription)
+          .filter((desc) => desc && desc.trim() !== "")
+          .join(", ");
+
+        const vehicleName = typeOfVehicle?.name;
+
+        // --- MESSAGE CONSTRUCTION (Conditional Blocks) ---
+        let baseMessage = `PICKARS DISPATCH SUMMARY\n____________________________________\n\nHello ${customer.firstName},\n\nYour delivery request has been received.\n`;
+
+        if (pickupName) baseMessage += `\nPICKUP:\n${pickupName}\n`;
+        if (deliveryList) baseMessage += `\nDESTINATIONS:\n${deliveryList}\n`;
+
+        baseMessage += `\nSHIPMENT DETAILS:`;
+        if (items) baseMessage += `\n- Item(s): ${items}`;
+        if (vehicleName) baseMessage += `\n- Vehicle: ${vehicleName}`;
+        baseMessage += `\n- Tracking ID: #${shortId}`;
+
+        baseMessage += `\n\nA rider will be assigned shortly.\n\nThank you.\nhttps://pickars.com`;
+
+        // --- ADMIN MESSAGE CONSTRUCTION ---
+        let adminMsg = `NEW DISPATCH ALERT: #${shortId}\n____________________________________\n`;
+        adminMsg += `\nCUSTOMER: ${customer.firstName} ${customer.lastName}`;
+        if (customer.phoneNumber) adminMsg += ` (${customer.phoneNumber})`;
+
+        if (pickupName) adminMsg += `\n\nPICKUP:\n${pickupName}`;
+        if (deliveryList) adminMsg += `\n\nDROP-OFFS:\n${deliveryList}`;
+        if (items) adminMsg += `\n\nITEMS:\n${items}`;
+        if (vehicleName) adminMsg += `\n\nVEHICLE: ${vehicleName}`;
+
+        // --- EXECUTION ---
+        console.log(`📡 [Background-WA] Dispatching dual notifications...`);
+
+        await Promise.all([
+          sendWhatsApp(customer.phoneNumber, baseMessage),
+          sendWhatsApp(ADMIN_NUMBER, adminMsg),
+        ]);
+
+        console.log(`✅ [Background-WA] Notifications sent successfully.`);
       } catch (waErr) {
         console.error(`⚠️ [Background-WA] WhatsApp failed: ${waErr.message}`);
       }
