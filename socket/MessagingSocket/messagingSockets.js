@@ -552,6 +552,34 @@ const messagingSockets = (server) => {
           return console.error(`[AcceptRide] Ride not found: ${rideId}`);
 
         // --- ISOLATED: CUSTOMER LOCATION UPDATE ---
+
+        try {
+          const customerWaMsg = `PICKARS: RIDER ASSIGNED
+____________________________________
+
+Good news, ${updatedRide.customer?.firstName}! 
+
+Your rider, ${
+            rider.firstName
+          }, has accepted your request and is heading to the pickup location.
+
+RIDER & VEHICLE:
+- Rider: ${rider.firstName} (${rider.driverRating || "5.0"}★)
+- Vehicle: ${rider.vehicleColor || ""} ${rider.vehicleName || "Dispatch Bike"}
+- Plate: ${rider.plateNumber || "N/A"}
+
+You can track your delivery live in the Pickars app.
+https://pickars.com/`;
+
+          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
+          console.log("[AcceptRide] Professional WhatsApp sent to Customer.");
+        } catch (finalErr) {
+          console.error(
+            "[AcceptRide] Error in post-processing steps:",
+            finalErr.message
+          );
+        }
+
         try {
           const customerUser = await User.findById(
             updatedRide.customer?.customerId
@@ -579,9 +607,28 @@ const messagingSockets = (server) => {
 
         // --- ISOLATED: RIDER WHATSAPP ---
         try {
-          const riderWaMsg = `Hello Pickars Rider ${rider.firstName}! 🛵...`;
+          const riderWaMsg = `PICKARS DISPATCH: NEW ASSIGNMENT
+____________________________________
+
+Hello ${rider.firstName}, 
+
+You have successfully accepted Ride #${rideId
+            .toString()
+            .slice(-6)
+            .toUpperCase()}.
+
+CUSTOMER DETAILS:
+- Name: ${updatedRide.customer?.firstName} ${updatedRide.customer?.lastName}
+- Contact: ${updatedRide.customer?.phoneNumber}
+
+PICKUP LOCATION:
+${updatedRide.pickup?.pickupAddress || "See App for Details"}
+
+Please proceed to the pickup point immediately. Safe travels!
+https://pickars.com`;
+
           await sendWhatsApp(rider.phoneNumber, riderWaMsg);
-          console.log("[AcceptRide] WhatsApp sent to Rider.");
+          console.log("[AcceptRide] Professional WhatsApp sent to Rider.");
         } catch (waErr) {
           console.error(
             "[AcceptRide] WhatsApp failed for Rider:",
@@ -697,8 +744,49 @@ const messagingSockets = (server) => {
 
           await notifyUsers(updatedRide, "acceptRide");
 
-          const customerWaMsg = `Good news ${updatedRide.customer?.firstName}! Rider is on the way.`;
-          await sendWhatsApp(updatedRide.customer?.phoneNumber, customerWaMsg);
+          // --- PROFESSIONAL CUSTOMER DISPATCH NOTIFICATION ---
+          try {
+            const bookingId = updatedRide._id
+              .toString()
+              .slice(-6)
+              .toUpperCase();
+            const riderName = rider.firstName;
+            const vehicle = `${rider.vehicleColor || ""} ${
+              rider.vehicleName || "Dispatch Bike"
+            }`.trim();
+            const plate = rider.plateNumber || "N/A";
+
+            const customerWaMsg = `PICKARS: RIDER ASSIGNED
+____________________________________
+
+Good news, ${updatedRide.customer?.firstName}! 
+
+Your rider is on the way to the pickup location.
+
+RIDER & VEHICLE:
+• Name: ${riderName}
+• Vehicle: ${vehicle}
+• Plate: ${plate}
+• Rating: ${rider.driverRating || "5.0"} ★
+
+TRACKING ID: #${bookingId}
+
+You can track your rider live in the Pickars app.
+https://pickars.com/`;
+
+            await sendWhatsApp(
+              updatedRide.customer?.phoneNumber,
+              customerWaMsg
+            );
+            console.log(
+              `✅ [AcceptRide] Pro-WhatsApp sent to Customer for ID: #${bookingId}`
+            );
+          } catch (finalErr) {
+            console.error(
+              "[AcceptRide] Error in customer WhatsApp dispatch:",
+              finalErr.message
+            );
+          }
         } catch (finalErr) {
           console.error(
             "[AcceptRide] Error in post-processing steps:",
@@ -756,12 +844,33 @@ const messagingSockets = (server) => {
         // Notify Users (Customer + Receivers)
         // ✅ START RIDE - Fail-Safe WhatsApp
         try {
-          const customerMsg = `Your Pickars Rider (${rider.firstName}) has started the trip! 🛵\nYour items are now in transit.`;
+          const bookingId = updatedRide._id.toString().slice(-6).toUpperCase();
+          const riderName = rider.firstName;
+          const startTime = new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
 
-          // We don't "await" this if we want it to be ultra-fast,
-          // but "await" inside a try/catch is safer for logging.
+          const customerMsg = `PICKARS: DISPATCH IN TRANSIT
+____________________________________
+
+Hello ${updatedRide.customer?.firstName}, 
+
+Your rider, ${riderName}, has successfully collected your items and has started the trip.
+
+SHIPMENT DETAILS:
+• Status: In Transit
+• Dispatch ID: #${bookingId}
+• Departure Time: ${startTime}
+
+Estimated delivery times are updated live in your dashboard.
+
+Track your shipment here:
+https://pickars.com/`;
+
+          // Using "await" ensures we log successful delivery to the WhatsApp API
           await sendWhatsApp(updatedRide.customer?.phoneNumber, customerMsg);
-          console.log("✅ WhatsApp sent to customer");
+          console.log(`📡 [TripStarted] Dispatch Alert sent for #${bookingId}`);
         } catch (waError) {
           // If WhatsApp fails, we just log it and move on.
           // The user still gets the socket update!
@@ -830,15 +939,32 @@ const messagingSockets = (server) => {
 
         await removeReceivingItemsForRide(rideObject);
         try {
-          await sendWhatsApp(
-            updatedRide.customer?.phoneNumber,
-            `🏁 Ride Completed! Delivery #${updatedRide.trackingId.slice(
-              -6
-            )} was successful. Thank you for choosing Pickars!`
-          ).catch((err) =>
-            console.error("WhatsApp End-Ride Error (Customer):", err.message)
-          );
-          console.log("✅ WhatsApp sent to customer");
+          const shortId = updatedRide._id.slice(-6).toUpperCase();
+          const customerName = updatedRide.customer?.firstName || "Customer";
+          const completionTime = new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          const completionMsg = `PICKARS: DELIVERY SUCCESSFUL
+____________________________________
+
+Hello ${customerName}, 
+
+Your shipment with Tracking ID #${shortId} has been successfully delivered and the trip is now closed.
+
+SUMMARY:
+• Status: Delivered
+• Completion Time: ${completionTime}
+• Dispatch ID: #${shortId}
+
+Thank you for choosing Pickars for your logistics needs. We hope you enjoyed the experience!
+
+Rate your rider or book another dispatch:
+https://pickars.com/`;
+
+          await sendWhatsApp(updatedRide.customer?.phoneNumber, completionMsg);
+          console.log(`✅ [Completion] Final WhatsApp sent for #${shortId}`);
         } catch (waError) {
           console.error("⚠️ WhatsApp Failed but moving on:", waError.message);
         }
@@ -1069,7 +1195,6 @@ const messagingSockets = (server) => {
             console.log(
               "⚠️ Unknown push notification type, skipping push logic."
             );
-            // We don't return here; we let the rest of the dispatch logic continue
           }
 
           const payload = {
@@ -1121,7 +1246,6 @@ const messagingSockets = (server) => {
 
           // 🏁 CONTINUATION POINT
           console.log(`🚀 Dispatching via Socket to room: ${driverIdForPush}`);
-          // Proceed with your io.to(driverIdForPush).emit(...) logic here
 
           const rideSocketData = new RideSocket({
             rideId,
