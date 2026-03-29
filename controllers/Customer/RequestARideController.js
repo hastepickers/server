@@ -765,51 +765,47 @@ exports.getRidesOngoingForCustomer = async (req, res) => {
   try {
     const customerId = req.user?.id;
 
-    console.log("👉 Extracted customerId:", customerId);
-    console.log("👉 Full req.user:", req.user);
-
+    // If no customerId, we return 200 with an empty list rather than 400
     if (!customerId) {
-      console.log("❌ No customerId found in token");
-      return res.status(400).json({ message: "Invalid customer." });
+      console.log("⚠️ No customerId found in token. Returning empty set.");
+      return res.status(200).json({ 
+        success: true, 
+        rides: [], 
+        message: "Invalid or missing customer identity." 
+      });
     }
 
     const query = {
       "customer.customerId": new mongoose.Types.ObjectId(customerId),
       acceptRide: true,
-      //      "startRide.isStarted": true,
       "endRide.isEnded": false,
       "cancelRide.isCancelled": false,
     };
 
-    console.log("\n📌 Query being sent to MongoDB:");
-    console.log(query);
+    console.log("📌 Query:", JSON.stringify(query));
 
     const rides = await RequestARide.find(query)
-      .select(
-        "pickup customer deliveryDropoff paid endRide typeOfVehicle cancelRide startRide totalPrice _id createdAt rider"
-      )
-      .lean();
+      .select("pickup customer deliveryDropoff paid endRide typeOfVehicle cancelRide startRide totalPrice _id createdAt rider")
+      .lean() || []; // Fallback to empty array if null
 
-    console.log("\n📦 Raw rides result from DB:");
-    console.log(JSON.stringify(rides, null, 2));
-    console.log("👉 Number of rides found:", rides?.length);
+    console.log("👉 Number of rides found:", rides.length);
 
-    if (!rides || rides.length === 0) {
-      console.log("⚠️ No rides matched the query.");
-      return res
-        .status(404)
-        .json({ message: "No rides found for this customer." });
-    }
+    // Always 200, even if rides.length === 0
+    return res.status(200).json({ 
+      success: true, 
+      rides: rides,
+      message: rides.length > 0 ? "Rides retrieved." : "No ongoing rides found."
+    });
 
-    console.log("✅ Sending successful response.\n");
-
-    res.status(200).json({ rides, success: true });
   } catch (error) {
-    console.error("\n❌ ERROR in getRidesOngoingForCustomer:");
-    console.error(error);
-    res.status(500).json({
-      message: "Error fetching rides by customerId",
-      error: error.message,
+    // We catch the error but still return a 200 to the frontend
+    console.error("❌ ERROR caught in getRidesOngoingForCustomer:", error.message);
+    
+    return res.status(200).json({
+      success: false, // You can still flag that an error happened internally
+      rides: [],
+      message: "An internal process error occurred, but the request was handled.",
+      error: error.message 
     });
   }
 };
