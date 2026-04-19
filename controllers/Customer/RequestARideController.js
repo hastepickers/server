@@ -108,7 +108,7 @@ exports.calculateTotalDistance = async (req, res) => {
         type: "bike",
         priceBeforeDiscount: 3500,
         discountPercent: 15,
-        price: 2000,
+        price: 3000,
         off: 525,
         description: "Standard delivery for your everyday items.",
       },
